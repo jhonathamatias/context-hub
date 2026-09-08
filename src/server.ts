@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { buildApp } from './app';
 
 const host = process.env.NODE_HOST ?? '0.0.0.0';

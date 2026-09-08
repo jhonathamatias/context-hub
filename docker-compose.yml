@@ -26,8 +26,10 @@ services:
     networks:
       - context-hub
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   db:
     image: postgres:16-alpine
@@ -38,6 +40,11 @@ services:
       - POSTGRES_DB=${DB_NAME}
     volumes:
       - ./db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - context-hub
 
