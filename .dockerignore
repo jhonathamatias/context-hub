@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.gitignore
+.env
+*.md
+db
+coverage
+.DS_Store
+*.log
+.pnpm-store

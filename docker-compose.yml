@@ -1,0 +1,58 @@
+services:
+  node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: context-hub-api
+    working_dir: /app
+    ports:
+      - "${NODE_PORT:-3000}:3000"
+    command: ["pnpm", "exec", "tsx", "src/server.ts"]
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      # Hide host Postgres data from the API bind mount.
+      - api_db_ignore:/app/db
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - NODE_HOST=${NODE_HOST:-0.0.0.0}
+      - NODE_PORT=${NODE_PORT:-3000}
+      - NODE_LOG_LEVEL=${NODE_LOG_LEVEL:-info}
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    networks:
+      - context-hub
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:16-alpine
+    container_name: context-hub-db
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    volumes:
+      - ./db:/var/lib/postgresql/data
+    networks:
+      - context-hub
+
+  redis:
+    image: redis:7-alpine
+    container_name: context-hub-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - context-hub
+
+volumes:
+  node_modules:
+  api_db_ignore:
+
+networks:
+  context-hub:
+    driver: bridge
