@@ -14,6 +14,7 @@ import {
 export type SearchRequest = {
   query: string;
   sourceId?: string;
+  sourceIds?: string[];
   limit?: number;
 };
 
@@ -22,6 +23,7 @@ export type SearchResponse = {
   model: string;
   provider: string;
   sourceId: string | null;
+  sourceIds: string[] | null;
   resultCount: number;
   results: SemanticSearchHit[];
 };
@@ -61,10 +63,17 @@ export class SemanticSearchService {
           throw new Error('Embedding provider returned no query vector');
         }
 
+        const sourceIds = [
+          ...new Set([
+            ...(request.sourceIds ?? []),
+            ...(request.sourceId ? [request.sourceId] : []),
+          ]),
+        ];
+
         const results = await this.vectors.search({
           queryVector,
           model: embedded.model,
-          ...(request.sourceId ? { sourceId: request.sourceId } : {}),
+          ...(sourceIds.length > 0 ? { sourceIds } : {}),
           ...(request.limit !== undefined ? { limit: request.limit } : {}),
         });
 
@@ -72,7 +81,8 @@ export class SemanticSearchService {
           query,
           model: embedded.model,
           provider: this.embeddings.name,
-          sourceId: request.sourceId ?? null,
+          sourceId: sourceIds[0] ?? null,
+          sourceIds: sourceIds.length > 0 ? sourceIds : null,
           resultCount: results.length,
           results,
         };

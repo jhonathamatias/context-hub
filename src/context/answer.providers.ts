@@ -42,6 +42,7 @@ export class LlmAnswerGenerationProvider implements AnswerGenerationProvider {
     const prompt = buildCourseAnswerPrompt({
       question: input.question,
       promptBlock: input.context.promptBlock,
+      ...(input.history ? { history: input.history } : {}),
     });
 
     const result = await this.llm.generateJson({

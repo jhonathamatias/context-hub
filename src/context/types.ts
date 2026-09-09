@@ -18,10 +18,16 @@ export type AssembledContext = {
   sufficientEvidence: boolean;
 };
 
+export type ChatHistoryMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
 export type AnswerGenerationInput = {
   question: string;
   mode: 'course';
   context: AssembledContext;
+  history?: ChatHistoryMessage[];
 };
 
 export type GeneratedAnswer = {
@@ -38,8 +44,10 @@ export interface AnswerGenerationProvider {
 export type AskRequest = {
   question: string;
   sourceId?: string;
+  sourceIds?: string[];
   limit?: number;
   mode?: 'course';
+  history?: ChatHistoryMessage[];
 };
 
 export type AskResponse = {
@@ -48,6 +56,8 @@ export type AskResponse = {
   answer: string;
   sufficientEvidence: boolean;
   citations: ContextCitation[];
+  /** Product-facing alias of citations (chat). */
+  references: ContextCitation[];
   retrieval: {
     hitCount: number;
     usedCount: number;

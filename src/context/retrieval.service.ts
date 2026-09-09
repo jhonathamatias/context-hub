@@ -13,6 +13,7 @@ import {
 export type RetrieveContextRequest = {
   question: string;
   sourceId?: string;
+  sourceIds?: string[];
   options?: Partial<RetrievalOptions>;
 };
 
@@ -40,7 +41,7 @@ export class ContextRetrievalService {
       logger,
       'INDEX',
       {
-        sourceId: request.sourceId ?? null,
+        sourceId: request.sourceId ?? request.sourceIds?.[0] ?? null,
         stage: 'context-retrieval',
       },
       async () => {
@@ -48,6 +49,7 @@ export class ContextRetrievalService {
           {
             query: request.question,
             ...(request.sourceId ? { sourceId: request.sourceId } : {}),
+            ...(request.sourceIds ? { sourceIds: request.sourceIds } : {}),
             limit: options.fetchLimit,
           },
           logger,

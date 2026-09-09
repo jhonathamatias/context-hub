@@ -28,6 +28,14 @@ describe('parseInput', () => {
     assert.equal(parsed.limit, 3);
   });
 
+  it('accepts sourceIds on search', () => {
+    const parsed = parseInput(searchBodySchema, {
+      query: 'lick',
+      sourceIds: ['512b014f-7c61-4e49-9511-970aecdea526'],
+    });
+    assert.equal(parsed.sourceIds?.length, 1);
+  });
+
   it('rejects empty search query', () => {
     assert.throws(
       () => parseInput(searchBodySchema, { query: '   ' }),

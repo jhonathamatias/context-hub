@@ -40,6 +40,12 @@ export class PgVectorRepository implements VectorRepository {
   async search(query: SemanticSearchQuery): Promise<SemanticSearchHit[]> {
     const limit = Math.min(Math.max(query.limit ?? 8, 1), 50);
     const vectorLiteral = toVectorLiteral(query.queryVector);
+    const sourceIds = [
+      ...new Set([
+        ...(query.sourceIds ?? []),
+        ...(query.sourceId ? [query.sourceId] : []),
+      ]),
+    ];
 
     const rows = (await AppDataSource.query(
       `
@@ -62,11 +68,11 @@ export class PgVectorRepository implements VectorRepository {
         INNER JOIN "sources" s ON s."id" = ce."source_id"
         WHERE ce."embedding" IS NOT NULL
           AND ce."model" = $2
-          AND ($3::uuid IS NULL OR ce."source_id" = $3::uuid)
+          AND ($3::uuid[] IS NULL OR cardinality($3::uuid[]) = 0 OR ce."source_id" = ANY($3::uuid[]))
         ORDER BY ce."embedding" <=> $1::vector
         LIMIT $4
       `,
-      [vectorLiteral, query.model, query.sourceId ?? null, limit],
+      [vectorLiteral, query.model, sourceIds.length > 0 ? sourceIds : null, limit],
     )) as SearchRow[];
 
     return rows.map((row) => {

@@ -34,6 +34,11 @@ export function registerErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error, request, reply) => {
     const statusCode = getStatusCode(error);
     const isServerError = statusCode >= 500;
+    const isValidation =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: string }).code === 'FST_ERR_VALIDATION';
 
     if (isServerError) {
       request.log.error(
@@ -61,7 +66,11 @@ export function registerErrorHandler(app: FastifyInstance): void {
 
     return reply.status(statusCode).send({
       statusCode,
-      error: isServerError ? 'Internal Server Error' : getErrorName(error),
+      error: isServerError
+        ? 'Internal Server Error'
+        : isValidation
+          ? 'Bad Request'
+          : getErrorName(error),
       message,
       requestId: request.id,
     });

@@ -9,7 +9,19 @@ export const generatedAnswerSchema = z.object({
 export function buildCourseAnswerPrompt(input: {
   question: string;
   promptBlock: string;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }): { system: string; user: string } {
+  const historyBlock =
+    input.history && input.history.length > 0
+      ? [
+          'Histórico recente (contexto conversacional; a evidência continua sendo só os trechos):',
+          ...input.history.map(
+            (message) => `${message.role}: ${message.content}`,
+          ),
+          '',
+        ]
+      : [];
+
   return {
     system: [
       'Você é o assistente do Context Hub no modo "curso".',
@@ -20,6 +32,7 @@ export function buildCourseAnswerPrompt(input: {
       'Responda em JSON com as chaves: answer (string), citationIndexes (number[]), sufficientEvidence (boolean).',
     ].join(' '),
     user: [
+      ...historyBlock,
       `Pergunta do aluno: ${input.question}`,
       '',
       'Trechos recuperados:',

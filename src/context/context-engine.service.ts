@@ -46,6 +46,7 @@ export class ContextEngineService {
           {
             question,
             ...(request.sourceId ? { sourceId: request.sourceId } : {}),
+            ...(request.sourceIds ? { sourceIds: request.sourceIds } : {}),
             ...(request.limit !== undefined
               ? { options: { maxPassages: request.limit } }
               : {}),
@@ -57,6 +58,7 @@ export class ContextEngineService {
           question,
           mode,
           context: retrieved.context,
+          ...(request.history ? { history: request.history } : {}),
         });
 
         const citations: ContextCitation[] =
@@ -74,6 +76,7 @@ export class ContextEngineService {
           answer: generated.answer,
           sufficientEvidence: generated.sufficientEvidence,
           citations,
+          references: citations,
           retrieval: {
             hitCount: retrieved.hitCount,
             usedCount: retrieved.context.passages.length,

@@ -3,7 +3,9 @@ import { Token } from 'typedi';
 export type SemanticSearchQuery = {
   queryVector: number[];
   model: string;
+  /** Prefer sourceIds when filtering by one or many sources. */
   sourceId?: string;
+  sourceIds?: string[];
   limit?: number;
 };
 

@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 import multipart from '@fastify/multipart';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import Fastify from 'fastify';
 import { Container } from 'typedi';
 import { env } from './config/env';
@@ -51,6 +53,25 @@ export async function buildApp() {
   });
 
   registerErrorHandler(app);
+
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title: 'Context Hub API',
+        description: 'Turn lesson videos into searchable, grounded answers',
+        version: '1.0.0',
+      },
+      tags: [
+        { name: 'health' },
+        { name: 'sources' },
+        { name: 'search' },
+        { name: 'chat' },
+      ],
+    },
+  });
+  await app.register(swaggerUi, {
+    routePrefix: '/docs',
+  });
 
   await app.register(multipart, {
     limits: {
