@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { Container } from 'typedi';
+import { EmbeddingService } from '../embeddings';
 import { KnowledgeService } from '../knowledge';
 import { TranscriptionService } from '../transcription';
 import { SourceIngestService } from '../video';
@@ -8,6 +9,7 @@ export async function sourcesRoute(app: FastifyInstance) {
   const ingestService = Container.get(SourceIngestService);
   const transcriptionService = Container.get(TranscriptionService);
   const knowledgeService = Container.get(KnowledgeService);
+  const embeddingService = Container.get(EmbeddingService);
 
   app.post('/sources/upload', async (request, reply) => {
     const data = await request.file();
@@ -54,5 +56,13 @@ export async function sourcesRoute(app: FastifyInstance) {
 
     const statusCode = result.knowledgeStatus === 'FAILED' ? 207 : 201;
     return reply.status(statusCode).send(result);
+  });
+
+  app.post('/sources/:sourceId/embeddings', async (request, reply) => {
+    const { sourceId } = request.params as { sourceId: string };
+
+    const result = await embeddingService.processSource(sourceId, request.log);
+
+    return reply.status(201).send(result);
   });
 }

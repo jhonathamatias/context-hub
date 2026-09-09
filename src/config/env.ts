@@ -50,6 +50,18 @@ const rawEnvSchema = z.object({
   GEMINI_MODEL: z.string().min(1).default('gemini-3.6-flash'),
 
   KNOWLEDGE_PROVIDER: z.enum(['openai', 'gemini']).default('openai'),
+
+  EMBEDDING_PROVIDER: z.enum(['openai', 'gemini']).default('openai'),
+  OPENAI_EMBEDDING_MODEL: z
+    .string()
+    .min(1)
+    .default('text-embedding-3-small'),
+  GEMINI_EMBEDDING_MODEL: z
+    .string()
+    .min(1)
+    .default('gemini-embedding-001'),
+  EMBEDDING_DIMENSION: z.coerce.number().int().positive().optional(),
+  EMBEDDING_BATCH_SIZE: z.coerce.number().int().positive().default(32),
 });
 
 export type AppEnv = {
@@ -79,6 +91,13 @@ export type AppEnv = {
     model: string;
   };
   knowledgeProvider: 'openai' | 'gemini';
+  embedding: {
+    provider: 'openai' | 'gemini';
+    openaiModel: string;
+    geminiModel: string;
+    dimension?: number;
+    batchSize: number;
+  };
 };
 
 function buildDatabaseUrl(raw: z.infer<typeof rawEnvSchema>): string {
@@ -181,6 +200,16 @@ export function loadEnv(
     gemini.apiKey = raw.GEMINI_API_KEY;
   }
 
+  const embedding: AppEnv['embedding'] = {
+    provider: raw.EMBEDDING_PROVIDER,
+    openaiModel: raw.OPENAI_EMBEDDING_MODEL,
+    geminiModel: raw.GEMINI_EMBEDDING_MODEL,
+    batchSize: raw.EMBEDDING_BATCH_SIZE,
+  };
+  if (raw.EMBEDDING_DIMENSION !== undefined) {
+    embedding.dimension = raw.EMBEDDING_DIMENSION;
+  }
+
   return {
     nodeEnv: raw.NODE_ENV,
     logLevel: raw.NODE_LOG_LEVEL,
@@ -201,6 +230,7 @@ export function loadEnv(
     openai,
     gemini,
     knowledgeProvider: raw.KNOWLEDGE_PROVIDER,
+    embedding,
   };
 }
 

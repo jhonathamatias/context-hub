@@ -17,6 +17,11 @@ import {
   TRANSCRIPTION_PROVIDER,
 } from './transcription';
 import {
+  EMBEDDING_PROVIDER,
+  GeminiEmbeddingProvider,
+  OpenAiEmbeddingProvider,
+} from './embeddings';
+import {
   GeminiKnowledgeExtractionProvider,
   KNOWLEDGE_EXTRACTION_PROVIDER,
   OpenAiKnowledgeExtractionProvider,
@@ -55,9 +60,25 @@ export async function buildApp() {
       ? Container.get(GeminiKnowledgeExtractionProvider)
       : Container.get(OpenAiKnowledgeExtractionProvider),
   );
+  Container.set(
+    EMBEDDING_PROVIDER,
+    env.embedding.provider === 'gemini'
+      ? Container.get(GeminiEmbeddingProvider)
+      : Container.get(OpenAiEmbeddingProvider),
+  );
   app.log.info(
     { knowledgeProvider: env.knowledgeProvider },
     'Knowledge extraction provider selected',
+  );
+  app.log.info(
+    {
+      embeddingProvider: env.embedding.provider,
+      embeddingModel:
+        env.embedding.provider === 'gemini'
+          ? env.embedding.geminiModel
+          : env.embedding.openaiModel,
+    },
+    'Embedding provider selected',
   );
 
   const database = Container.get(DatabaseService);

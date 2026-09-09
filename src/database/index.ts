@@ -1,5 +1,6 @@
 export { AppDataSource, dataSourceOptions } from './data-source';
 export { DatabaseService } from './database.service';
+export { ChunkEmbedding } from './entities/chunk-embedding.entity';
 export { KnowledgeExtraction } from './entities/knowledge-extraction.entity';
 export { ProcessingJob } from './entities/processing-job.entity';
 export { Source } from './entities/source.entity';
