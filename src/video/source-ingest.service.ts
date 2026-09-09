@@ -4,7 +4,7 @@ import { basename, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { Readable } from 'node:stream';
 import type { FastifyBaseLogger } from 'fastify';
-import { Container, Service } from 'typedi';
+import { Service } from 'typedi';
 import { env } from '../config/env';
 import {
   DatabaseService,
@@ -45,13 +45,10 @@ export type IngestVideoResult = {
 
 @Service()
 export class SourceIngestService {
-  private readonly database: DatabaseService;
-  private readonly videoProcessor: FfmpegVideoProcessor;
-
-  constructor() {
-    this.database = Container.get(DatabaseService);
-    this.videoProcessor = Container.get(FfmpegVideoProcessor);
-  }
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly videoProcessor: FfmpegVideoProcessor,
+  ) {}
 
   async ingest(input: IngestVideoInput): Promise<IngestVideoResult> {
     const extension = normalizeExtension(input.filename);

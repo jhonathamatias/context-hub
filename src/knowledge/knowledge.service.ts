@@ -1,5 +1,5 @@
 import type { FastifyBaseLogger } from 'fastify';
-import { Container, Service, Token } from 'typedi';
+import { Inject, Service, Token } from 'typedi';
 import {
   DatabaseService,
   KnowledgeExtraction,
@@ -16,7 +16,6 @@ import {
 import { withProcessingLog } from '../observability';
 import type { TranscriptionSegment } from '../transcription/types';
 import { buildTranscriptChunks } from './chunking';
-import { OpenAiKnowledgeExtractionProvider } from './openai-knowledge.provider';
 import type { KnowledgeExtractionProvider } from './types';
 
 export const KNOWLEDGE_EXTRACTION_PROVIDER =
@@ -36,15 +35,11 @@ export type ProcessKnowledgeResult = {
 
 @Service()
 export class KnowledgeService {
-  private readonly database: DatabaseService;
-  private readonly provider: KnowledgeExtractionProvider;
-
-  constructor() {
-    this.database = Container.get(DatabaseService);
-    this.provider = Container.has(KNOWLEDGE_EXTRACTION_PROVIDER)
-      ? Container.get(KNOWLEDGE_EXTRACTION_PROVIDER)
-      : Container.get(OpenAiKnowledgeExtractionProvider);
-  }
+  constructor(
+    private readonly database: DatabaseService,
+    @Inject(KNOWLEDGE_EXTRACTION_PROVIDER)
+    private readonly provider: KnowledgeExtractionProvider,
+  ) {}
 
   async processSource(
     sourceId: string,

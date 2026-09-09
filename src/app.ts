@@ -11,6 +11,7 @@ import {
 } from './observability';
 import { RedisService } from './redis';
 import { healthRoute } from './routes/health.route';
+import { searchRoute } from './routes/search.route';
 import { sourcesRoute } from './routes/sources.route';
 import {
   LocalWhisperTranscriptionProvider,
@@ -26,6 +27,7 @@ import {
   KNOWLEDGE_EXTRACTION_PROVIDER,
   OpenAiKnowledgeExtractionProvider,
 } from './knowledge';
+import { PgVectorRepository, VECTOR_REPOSITORY } from './search';
 
 export async function buildApp() {
   const app = Fastify({
@@ -66,6 +68,7 @@ export async function buildApp() {
       ? Container.get(GeminiEmbeddingProvider)
       : Container.get(OpenAiEmbeddingProvider),
   );
+  Container.set(VECTOR_REPOSITORY, Container.get(PgVectorRepository));
   app.log.info(
     { knowledgeProvider: env.knowledgeProvider },
     'Knowledge extraction provider selected',
@@ -120,6 +123,7 @@ export async function buildApp() {
 
   await app.register(healthRoute);
   await app.register(sourcesRoute);
+  await app.register(searchRoute);
 
   return app;
 }

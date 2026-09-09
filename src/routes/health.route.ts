@@ -1,17 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { Container } from 'typedi';
-import { HealthService } from '../services/health.service';
+import { HealthController } from '../controllers';
 
 export async function healthRoute(app: FastifyInstance) {
-  const healthService = Container.get(HealthService);
+  const controller = Container.get(HealthController);
 
-  app.get('/health', async (_request, reply) => {
-    const result = await healthService.check();
-
-    return reply.status(result.statusCode).send({
-      status: result.status,
-      database: result.database,
-      redis: result.redis,
-    });
-  });
+  app.get('/health', (request, reply) => controller.check(request, reply));
 }

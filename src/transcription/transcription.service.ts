@@ -1,7 +1,7 @@
 import { access, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FastifyBaseLogger } from 'fastify';
-import { Container, Service, Token } from 'typedi';
+import { Inject, Service, Token } from 'typedi';
 import { env } from '../config/env';
 import {
   DatabaseService,
@@ -14,7 +14,6 @@ import {
   TranscriptionStatus,
 } from '../database';
 import { withProcessingLog } from '../observability';
-import { LocalWhisperTranscriptionProvider } from './local-whisper.provider';
 import type { TranscriptionProvider, TranscriptionResult } from './types';
 
 export const TRANSCRIPTION_PROVIDER = new Token<TranscriptionProvider>(
@@ -36,15 +35,11 @@ export type TranscribeSourceResult = {
 
 @Service()
 export class TranscriptionService {
-  private readonly database: DatabaseService;
-  private readonly provider: TranscriptionProvider;
-
-  constructor() {
-    this.database = Container.get(DatabaseService);
-    this.provider = Container.has(TRANSCRIPTION_PROVIDER)
-      ? Container.get(TRANSCRIPTION_PROVIDER)
-      : Container.get(LocalWhisperTranscriptionProvider);
-  }
+  constructor(
+    private readonly database: DatabaseService,
+    @Inject(TRANSCRIPTION_PROVIDER)
+    private readonly provider: TranscriptionProvider,
+  ) {}
 
   async transcribeSource(
     sourceId: string,

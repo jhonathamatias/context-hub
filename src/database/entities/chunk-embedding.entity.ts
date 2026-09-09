@@ -7,10 +7,11 @@ import {
   PrimaryGeneratedColumn,
   Unique,
   UpdateDateColumn,
+  type Relation,
 } from 'typeorm';
-import { Source } from './source.entity';
-import { TranscriptChunk } from './transcript-chunk.entity';
-import { Transcription } from './transcription.entity';
+import type { Source } from './source.entity';
+import type { TranscriptChunk } from './transcript-chunk.entity';
+import type { Transcription } from './transcription.entity';
 
 @Entity({ name: 'chunk_embeddings' })
 @Unique('UQ_chunk_embeddings_chunk_model', ['chunkId', 'model'])
@@ -21,23 +22,23 @@ export class ChunkEmbedding {
   @Column({ name: 'chunk_id', type: 'uuid' })
   chunkId!: string;
 
-  @ManyToOne(() => TranscriptChunk, { onDelete: 'CASCADE' })
+  @ManyToOne('TranscriptChunk', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'chunk_id' })
-  chunk!: TranscriptChunk;
+  chunk!: Relation<TranscriptChunk>;
 
   @Column({ name: 'source_id', type: 'uuid' })
   sourceId!: string;
 
-  @ManyToOne(() => Source, { onDelete: 'CASCADE' })
+  @ManyToOne('Source', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'source_id' })
-  source!: Source;
+  source!: Relation<Source>;
 
   @Column({ name: 'transcription_id', type: 'uuid' })
   transcriptionId!: string;
 
-  @ManyToOne(() => Transcription, { onDelete: 'CASCADE' })
+  @ManyToOne('Transcription', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'transcription_id' })
-  transcription!: Transcription;
+  transcription!: Relation<Transcription>;
 
   @Column({ type: 'varchar', length: 64 })
   provider!: string;

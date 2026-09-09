@@ -5,10 +5,11 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  type Relation,
 } from 'typeorm';
 import { SourceStatus, SourceType } from '../enums';
-import { ProcessingJob } from './processing-job.entity';
-import { Transcription } from './transcription.entity';
+import type { ProcessingJob } from './processing-job.entity';
+import type { Transcription } from './transcription.entity';
 
 @Entity({ name: 'sources' })
 export class Source {
@@ -32,11 +33,11 @@ export class Source {
   })
   status!: SourceStatus;
 
-  @OneToMany(() => ProcessingJob, (job) => job.source)
-  processingJobs!: ProcessingJob[];
+  @OneToMany('ProcessingJob', (job: ProcessingJob) => job.source)
+  processingJobs!: Relation<ProcessingJob[]>;
 
-  @OneToMany(() => Transcription, (transcription) => transcription.source)
-  transcriptions!: Transcription[];
+  @OneToMany('Transcription', (transcription: Transcription) => transcription.source)
+  transcriptions!: Relation<Transcription[]>;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

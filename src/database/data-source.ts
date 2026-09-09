@@ -12,6 +12,7 @@ import { InitSourceAndProcessingJob1788825600000 } from './migrations/1788825600
 import { RenameColumnsToSnakeCase1788915000000 } from './migrations/1788915000000-RenameColumnsToSnakeCase';
 import { AddKnowledgeTables1788918000000 } from './migrations/1788918000000-AddKnowledgeTables';
 import { AddChunkEmbeddings1788921000000 } from './migrations/1788921000000-AddChunkEmbeddings';
+import { EnablePgvector1788924000000 } from './migrations/1788924000000-EnablePgvector';
 import { SnakeNamingStrategy } from './snake-naming.strategy';
 
 export const dataSourceOptions: DataSourceOptions = {
@@ -31,6 +32,7 @@ export const dataSourceOptions: DataSourceOptions = {
     RenameColumnsToSnakeCase1788915000000,
     AddKnowledgeTables1788918000000,
     AddChunkEmbeddings1788921000000,
+    EnablePgvector1788924000000,
   ],
   namingStrategy: new SnakeNamingStrategy(),
   synchronize: false,

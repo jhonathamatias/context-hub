@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { In } from 'typeorm';
-import { Container, Service, Token } from 'typedi';
+import { Inject, Service, Token } from 'typedi';
 import {
   ChunkEmbedding,
   DatabaseService,
@@ -16,12 +16,14 @@ import {
 import { env } from '../config/env';
 import { withProcessingLog } from '../observability';
 import {
+  VECTOR_REPOSITORY,
+  type VectorRepository,
+} from '../search/types';
+import {
   batchItems,
   hashEmbeddingContent,
   shouldSkipEmbedding,
 } from './content-hash';
-import { GeminiEmbeddingProvider } from './gemini-embedding.provider';
-import { OpenAiEmbeddingProvider } from './openai-embedding.provider';
 import type { EmbeddingProvider } from './types';
 
 export const EMBEDDING_PROVIDER = new Token<EmbeddingProvider>(
@@ -41,17 +43,13 @@ export type ProcessEmbeddingsResult = {
 
 @Service()
 export class EmbeddingService {
-  private readonly database: DatabaseService;
-  private readonly provider: EmbeddingProvider;
-
-  constructor() {
-    this.database = Container.get(DatabaseService);
-    this.provider = Container.has(EMBEDDING_PROVIDER)
-      ? Container.get(EMBEDDING_PROVIDER)
-      : env.embedding.provider === 'gemini'
-        ? Container.get(GeminiEmbeddingProvider)
-        : Container.get(OpenAiEmbeddingProvider);
-  }
+  constructor(
+    private readonly database: DatabaseService,
+    @Inject(EMBEDDING_PROVIDER)
+    private readonly provider: EmbeddingProvider,
+    @Inject(VECTOR_REPOSITORY)
+    private readonly vectors: VectorRepository,
+  ) {}
 
   async processSource(
     sourceId: string,
@@ -211,9 +209,10 @@ export class EmbeddingService {
                 item.existing.dimension = embedded.dimension;
                 item.existing.contentHash = item.contentHash;
                 item.existing.values = values;
-                await embeddingRepo.save(item.existing);
+                const saved = await embeddingRepo.save(item.existing);
+                await this.vectors.syncEmbedding(saved.id, values);
               } else {
-                await embeddingRepo.save(
+                const saved = await embeddingRepo.save(
                   embeddingRepo.create({
                     chunkId: item.chunk.id,
                     sourceId,
@@ -225,6 +224,7 @@ export class EmbeddingService {
                     values,
                   }),
                 );
+                await this.vectors.syncEmbedding(saved.id, values);
               }
 
               embeddedCount += 1;

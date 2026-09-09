@@ -6,9 +6,10 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  type Relation,
 } from 'typeorm';
 import { TranscriptionStatus } from '../enums';
-import { Source } from './source.entity';
+import type { Source } from './source.entity';
 
 @Entity({ name: 'transcriptions' })
 export class Transcription {
@@ -18,11 +19,11 @@ export class Transcription {
   @Column({ name: 'source_id', type: 'uuid' })
   sourceId!: string;
 
-  @ManyToOne(() => Source, (source) => source.transcriptions, {
+  @ManyToOne('Source', (source: Source) => source.transcriptions, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'source_id' })
-  source!: Source;
+  source!: Relation<Source>;
 
   @Column({ type: 'varchar', length: 64 })
   provider!: string;

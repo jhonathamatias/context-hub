@@ -7,7 +7,7 @@ services:
     working_dir: /app
     ports:
       - "${NODE_PORT:-3000}:3000"
-    command: ["pnpm", "exec", "tsx", "src/server.ts"]
+    command: ["pnpm", "dev"]
     volumes:
       - .:/app
       - node_modules:/app/node_modules
@@ -32,7 +32,8 @@ services:
         condition: service_healthy
 
   db:
-    image: postgres:16-alpine
+    # pgvector-enabled Postgres (same major as before: 16)
+    image: pgvector/pgvector:pg16
     container_name: context-hub-db
     ports:
       - "5432:5432"

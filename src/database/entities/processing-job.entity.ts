@@ -6,9 +6,10 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  type Relation,
 } from 'typeorm';
 import { ProcessingJobStatus, ProcessingStage } from '../enums';
-import { Source } from './source.entity';
+import type { Source } from './source.entity';
 
 @Entity({ name: 'processing_jobs' })
 export class ProcessingJob {
@@ -18,11 +19,11 @@ export class ProcessingJob {
   @Column({ name: 'source_id', type: 'uuid' })
   sourceId!: string;
 
-  @ManyToOne(() => Source, (source) => source.processingJobs, {
+  @ManyToOne('Source', (source: Source) => source.processingJobs, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'source_id' })
-  source!: Source;
+  source!: Relation<Source>;
 
   @Column({
     type: 'enum',

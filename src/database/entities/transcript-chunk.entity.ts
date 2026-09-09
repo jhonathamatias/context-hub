@@ -6,9 +6,10 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  type Relation,
 } from 'typeorm';
-import { Source } from './source.entity';
-import { Transcription } from './transcription.entity';
+import type { Source } from './source.entity';
+import type { Transcription } from './transcription.entity';
 
 @Entity({ name: 'transcript_chunks' })
 export class TranscriptChunk {
@@ -18,16 +19,16 @@ export class TranscriptChunk {
   @Column({ name: 'source_id', type: 'uuid' })
   sourceId!: string;
 
-  @ManyToOne(() => Source, { onDelete: 'CASCADE' })
+  @ManyToOne('Source', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'source_id' })
-  source!: Source;
+  source!: Relation<Source>;
 
   @Column({ name: 'transcription_id', type: 'uuid' })
   transcriptionId!: string;
 
-  @ManyToOne(() => Transcription, { onDelete: 'CASCADE' })
+  @ManyToOne('Transcription', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'transcription_id' })
-  transcription!: Transcription;
+  transcription!: Relation<Transcription>;
 
   @Column({ name: 'chunk_index', type: 'int' })
   chunkIndex!: number;

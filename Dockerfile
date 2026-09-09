@@ -33,4 +33,6 @@ ENV WHISPER_DEVICE=cpu
 
 EXPOSE 3000
 
-CMD ["pnpm", "exec", "tsx", "src/server.ts"]
+RUN pnpm build
+
+CMD ["node", "dist/server.js"]
