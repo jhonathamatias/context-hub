@@ -23,16 +23,19 @@ import {
   OpenAiEmbeddingProvider,
 } from './embeddings';
 import {
-  GeminiKnowledgeExtractionProvider,
   KNOWLEDGE_EXTRACTION_PROVIDER,
-  OpenAiKnowledgeExtractionProvider,
+  LlmKnowledgeExtractionProvider,
 } from './knowledge';
 import { PgVectorRepository, VECTOR_REPOSITORY } from './search';
 import {
   ANSWER_GENERATION_PROVIDER,
-  GeminiAnswerGenerationProvider,
-  OpenAiAnswerGenerationProvider,
+  LlmAnswerGenerationProvider,
 } from './context';
+import {
+  GeminiLlmProvider,
+  LLM_PROVIDER,
+  OpenAiLlmProvider,
+} from './llm';
 
 export async function buildApp() {
   const app = Fastify({
@@ -56,16 +59,20 @@ export async function buildApp() {
     },
   });
 
-  // Swap this binding later to use an API-based provider without changing domain services.
+  // Vendor SDKs stay behind LlmProvider / EmbeddingProvider ports.
   Container.set(
     TRANSCRIPTION_PROVIDER,
     Container.get(LocalWhisperTranscriptionProvider),
   );
   Container.set(
+    LLM_PROVIDER,
+    env.llm.provider === 'gemini'
+      ? Container.get(GeminiLlmProvider)
+      : Container.get(OpenAiLlmProvider),
+  );
+  Container.set(
     KNOWLEDGE_EXTRACTION_PROVIDER,
-    env.knowledgeProvider === 'gemini'
-      ? Container.get(GeminiKnowledgeExtractionProvider)
-      : Container.get(OpenAiKnowledgeExtractionProvider),
+    Container.get(LlmKnowledgeExtractionProvider),
   );
   Container.set(
     EMBEDDING_PROVIDER,
@@ -76,19 +83,15 @@ export async function buildApp() {
   Container.set(VECTOR_REPOSITORY, Container.get(PgVectorRepository));
   Container.set(
     ANSWER_GENERATION_PROVIDER,
-    env.knowledgeProvider === 'gemini'
-      ? Container.get(GeminiAnswerGenerationProvider)
-      : Container.get(OpenAiAnswerGenerationProvider),
-  );
-  app.log.info(
-    { knowledgeProvider: env.knowledgeProvider },
-    'Knowledge extraction provider selected',
+    Container.get(LlmAnswerGenerationProvider),
   );
   app.log.info(
     {
-      answerProvider: env.knowledgeProvider,
+      llmProvider: env.llm.provider,
+      llmTimeoutMs: env.llm.timeoutMs,
+      llmMaxRetries: env.llm.maxRetries,
     },
-    'Answer generation provider selected',
+    'LLM provider selected',
   );
   app.log.info(
     {

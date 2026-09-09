@@ -49,6 +49,12 @@ const rawEnvSchema = z.object({
   GEMINI_API_KEY: optionalNonEmptyString,
   GEMINI_MODEL: z.string().min(1).default('gemini-3.6-flash'),
 
+  /** Central chat LLM used by knowledge extraction + answer generation. */
+  LLM_PROVIDER: z.enum(['openai', 'gemini']).optional(),
+  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  LLM_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
+  LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(4096),
+
   KNOWLEDGE_PROVIDER: z.enum(['openai', 'gemini']).default('openai'),
 
   EMBEDDING_PROVIDER: z.enum(['openai', 'gemini']).default('openai'),
@@ -89,6 +95,12 @@ export type AppEnv = {
   gemini: {
     apiKey?: string;
     model: string;
+  };
+  llm: {
+    provider: 'openai' | 'gemini';
+    timeoutMs: number;
+    maxRetries: number;
+    maxOutputTokens: number;
   };
   knowledgeProvider: 'openai' | 'gemini';
   embedding: {
@@ -210,6 +222,8 @@ export function loadEnv(
     embedding.dimension = raw.EMBEDDING_DIMENSION;
   }
 
+  const llmProvider = raw.LLM_PROVIDER ?? raw.KNOWLEDGE_PROVIDER;
+
   return {
     nodeEnv: raw.NODE_ENV,
     logLevel: raw.NODE_LOG_LEVEL,
@@ -229,6 +243,12 @@ export function loadEnv(
     },
     openai,
     gemini,
+    llm: {
+      provider: llmProvider,
+      timeoutMs: raw.LLM_TIMEOUT_MS,
+      maxRetries: raw.LLM_MAX_RETRIES,
+      maxOutputTokens: raw.LLM_MAX_OUTPUT_TOKENS,
+    },
     knowledgeProvider: raw.KNOWLEDGE_PROVIDER,
     embedding,
   };

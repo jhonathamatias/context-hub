@@ -1,8 +1,7 @@
 export { assembleContext } from './assemble';
 export {
   ANSWER_GENERATION_PROVIDER,
-  GeminiAnswerGenerationProvider,
-  OpenAiAnswerGenerationProvider,
+  LlmAnswerGenerationProvider,
 } from './answer.providers';
 export { ContextEngineService } from './context-engine.service';
 export { filterAndDedupeHits, textOverlapRatio } from './dedupe';

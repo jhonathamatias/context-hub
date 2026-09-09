@@ -4,8 +4,7 @@ export {
   structuredLessonKnowledgeSchema,
   type StructuredLessonKnowledge,
 } from './knowledge.schema';
-export { OpenAiKnowledgeExtractionProvider } from './openai-knowledge.provider';
-export { GeminiKnowledgeExtractionProvider } from './gemini-knowledge.provider';
+export { LlmKnowledgeExtractionProvider } from './llm-knowledge.provider';
 export {
   KNOWLEDGE_EXTRACTION_PROVIDER,
   KnowledgeService,
