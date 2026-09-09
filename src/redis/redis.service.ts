@@ -1,21 +1,6 @@
 import Redis from 'ioredis';
 import { Service } from 'typedi';
-
-function buildRedisUrl(): string {
-  if (process.env.REDIS_URL) {
-    return process.env.REDIS_URL;
-  }
-
-  const host = process.env.REDIS_HOST ?? 'localhost';
-  const port = process.env.REDIS_PORT ?? '6379';
-  const password = process.env.REDIS_PASSWORD;
-
-  if (password) {
-    return `redis://:${encodeURIComponent(password)}@${host}:${port}`;
-  }
-
-  return `redis://${host}:${port}`;
-}
+import { env } from '../config/env';
 
 @Service()
 export class RedisService {
@@ -30,8 +15,7 @@ export class RedisService {
       return;
     }
 
-    const url = buildRedisUrl();
-    const client = new Redis(url, {
+    const client = new Redis(env.redisUrl, {
       lazyConnect: true,
       maxRetriesPerRequest: 1,
       enableReadyCheck: true,

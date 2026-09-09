@@ -1,8 +1,6 @@
 import 'reflect-metadata';
+import { env } from './config/env';
 import { buildApp } from './app';
-
-const host = process.env.NODE_HOST ?? '0.0.0.0';
-const port = Number(process.env.NODE_PORT ?? 3000);
 
 async function main() {
   const app = await buildApp();
@@ -26,7 +24,7 @@ async function main() {
   });
 
   try {
-    await app.listen({ host, port });
+    await app.listen({ host: env.host, port: env.port });
   } catch (error) {
     app.log.error(error);
     process.exit(1);

@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import Fastify from 'fastify';
 import { Container } from 'typedi';
+import { env } from './config/env';
 import { DatabaseService } from './database';
 import { RedisService } from './redis';
 import { healthRoute } from './routes/health.route';
@@ -8,7 +9,7 @@ import { healthRoute } from './routes/health.route';
 export async function buildApp() {
   const app = Fastify({
     logger: {
-      level: process.env.NODE_LOG_LEVEL ?? 'info',
+      level: env.logLevel,
     },
   });
 
