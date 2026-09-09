@@ -23,3 +23,10 @@ export enum ProcessingJobStatus {
   SUCCEEDED = 'SUCCEEDED',
   FAILED = 'FAILED',
 }
+
+export enum TranscriptionStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+}

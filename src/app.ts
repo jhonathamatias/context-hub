@@ -12,6 +12,10 @@ import {
 import { RedisService } from './redis';
 import { healthRoute } from './routes/health.route';
 import { sourcesRoute } from './routes/sources.route';
+import {
+  LocalWhisperTranscriptionProvider,
+  TRANSCRIPTION_PROVIDER,
+} from './transcription';
 
 export async function buildApp() {
   const app = Fastify({
@@ -34,6 +38,12 @@ export async function buildApp() {
       fileSize: env.maxUploadBytes,
     },
   });
+
+  // Swap this binding later to use an API-based provider without changing domain services.
+  Container.set(
+    TRANSCRIPTION_PROVIDER,
+    Container.get(LocalWhisperTranscriptionProvider),
+  );
 
   const database = Container.get(DatabaseService);
   const redis = Container.get(RedisService);

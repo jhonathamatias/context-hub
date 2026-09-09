@@ -23,11 +23,11 @@ export class InitSourceAndProcessingJob1788825600000
       CREATE TABLE "sources" (
         "id" uuid NOT NULL DEFAULT gen_random_uuid(),
         "type" "source_type" NOT NULL,
-        "originalName" character varying(512) NOT NULL,
-        "storageKey" character varying(1024) NOT NULL,
+        "original_name" character varying(512) NOT NULL,
+        "storage_key" character varying(1024) NOT NULL,
         "status" "source_status" NOT NULL DEFAULT 'PENDING',
-        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
-        "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+        "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+        "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
         CONSTRAINT "PK_sources_id" PRIMARY KEY ("id")
       )
     `);
@@ -35,27 +35,29 @@ export class InitSourceAndProcessingJob1788825600000
     await queryRunner.query(`
       CREATE TABLE "processing_jobs" (
         "id" uuid NOT NULL DEFAULT gen_random_uuid(),
-        "sourceId" uuid NOT NULL,
+        "source_id" uuid NOT NULL,
         "stage" "processing_stage" NOT NULL,
         "status" "processing_job_status" NOT NULL DEFAULT 'PENDING',
-        "errorMessage" text,
-        "startedAt" TIMESTAMPTZ,
-        "finishedAt" TIMESTAMPTZ,
-        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
-        "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+        "error_message" text,
+        "started_at" TIMESTAMPTZ,
+        "finished_at" TIMESTAMPTZ,
+        "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+        "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
         CONSTRAINT "PK_processing_jobs_id" PRIMARY KEY ("id"),
         CONSTRAINT "FK_processing_jobs_source"
-          FOREIGN KEY ("sourceId") REFERENCES "sources"("id") ON DELETE CASCADE
+          FOREIGN KEY ("source_id") REFERENCES "sources"("id") ON DELETE CASCADE
       )
     `);
 
     await queryRunner.query(`
-      CREATE INDEX "IDX_processing_jobs_sourceId" ON "processing_jobs" ("sourceId")
+      CREATE INDEX "idx_processing_jobs_source_id" ON "processing_jobs" ("source_id")
     `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_processing_jobs_sourceId"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "idx_processing_jobs_source_id"`,
+    );
     await queryRunner.query(`DROP TABLE IF EXISTS "processing_jobs"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "sources"`);
     await queryRunner.query(`DROP TYPE IF EXISTS "processing_job_status"`);

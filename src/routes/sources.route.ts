@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { Container } from 'typedi';
+import { TranscriptionService } from '../transcription';
 import { SourceIngestService } from '../video';
 
 export async function sourcesRoute(app: FastifyInstance) {
   const ingestService = Container.get(SourceIngestService);
+  const transcriptionService = Container.get(TranscriptionService);
 
   app.post('/sources/upload', async (request, reply) => {
     const data = await request.file();
@@ -31,5 +33,16 @@ export async function sourcesRoute(app: FastifyInstance) {
       data.file.resume();
       throw error;
     }
+  });
+
+  app.post('/sources/:sourceId/transcribe', async (request, reply) => {
+    const { sourceId } = request.params as { sourceId: string };
+
+    const result = await transcriptionService.transcribeSource(
+      sourceId,
+      request.log,
+    );
+
+    return reply.status(201).send(result);
   });
 }

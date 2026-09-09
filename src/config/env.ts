@@ -34,7 +34,13 @@ const rawEnvSchema = z.object({
     .number()
     .int()
     .positive()
-    .default(100 * 1024 * 1024),
+    .default(500 * 1024 * 1024),
+
+  WHISPER_PYTHON_PATH: z.string().min(1).default('/opt/whisper-venv/bin/python'),
+  WHISPER_SCRIPT_PATH: z.string().min(1).default('./python/transcribe.py'),
+  WHISPER_MODEL: z.string().min(1).default('tiny'),
+  WHISPER_DEVICE: z.enum(['cpu', 'cuda']).default('cpu'),
+  WHISPER_TIMEOUT_MS: z.coerce.number().int().positive().default(300_000),
 
   OPENAI_API_KEY: optionalNonEmptyString,
   OPENAI_BASE_URL: optionalNonEmptyString,
@@ -51,6 +57,13 @@ export type AppEnv = {
   storageDir: string;
   tempDir: string;
   maxUploadBytes: number;
+  whisper: {
+    pythonPath: string;
+    scriptPath: string;
+    model: string;
+    device: 'cpu' | 'cuda';
+    timeoutMs: number;
+  };
   openai: {
     apiKey?: string;
     baseUrl?: string;
@@ -159,6 +172,13 @@ export function loadEnv(
     storageDir,
     tempDir,
     maxUploadBytes: raw.MAX_UPLOAD_BYTES,
+    whisper: {
+      pythonPath: raw.WHISPER_PYTHON_PATH,
+      scriptPath: resolve(raw.WHISPER_SCRIPT_PATH),
+      model: raw.WHISPER_MODEL,
+      device: raw.WHISPER_DEVICE,
+      timeoutMs: raw.WHISPER_TIMEOUT_MS,
+    },
     openai,
   };
 }

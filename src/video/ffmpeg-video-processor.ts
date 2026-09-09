@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Service } from 'typedi';
-import { assertVideoFile } from './file-validation';
+import { VideoValidationError, assertVideoFile } from './file-validation';
 import { ProcessCommandError, runProcess } from './process-runner';
 import type {
   AudioTrackInfo,
@@ -73,7 +73,9 @@ export class FfmpegVideoProcessor implements VideoProcessor {
       ]));
     } catch (error) {
       if (error instanceof ProcessCommandError) {
-        throw new Error(`Failed to probe video: ${error.stderr || error.message}`);
+        throw new VideoValidationError(
+          `Invalid or corrupted video file: ${error.stderr || error.message}`,
+        );
       }
       throw error;
     }
@@ -141,8 +143,8 @@ export class FfmpegVideoProcessor implements VideoProcessor {
       ]);
     } catch (error) {
       if (error instanceof ProcessCommandError) {
-        throw new Error(
-          `Failed to extract audio: ${error.stderr || error.message}`,
+        throw new VideoValidationError(
+          `Failed to extract audio from video: ${error.stderr || error.message}`,
         );
       }
       throw error;
@@ -161,7 +163,7 @@ export class FfmpegVideoProcessor implements VideoProcessor {
 
     const metadata = await this.probe(inputPath);
     if (!metadata.audio) {
-      throw new Error('Video has no audio stream to extract');
+      throw new VideoValidationError('Video has no audio stream to extract');
     }
 
     const audioPath = join(workDir, 'audio.wav');

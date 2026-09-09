@@ -15,13 +15,13 @@ export class ProcessingJob {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ name: 'source_id', type: 'uuid' })
   sourceId!: string;
 
   @ManyToOne(() => Source, (source) => source.processingJobs, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'sourceId' })
+  @JoinColumn({ name: 'source_id' })
   source!: Source;
 
   @Column({
@@ -39,18 +39,18 @@ export class ProcessingJob {
   })
   status!: ProcessingJobStatus;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'error_message', type: 'text', nullable: true })
   errorMessage!: string | null;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ name: 'started_at', type: 'timestamptz', nullable: true })
   startedAt!: Date | null;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ name: 'finished_at', type: 'timestamptz', nullable: true })
   finishedAt!: Date | null;
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 }
