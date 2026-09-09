@@ -248,7 +248,7 @@ export class EmbeddingService {
       embedJob.finishedAt = new Date();
       await jobRepo.save(embedJob);
 
-      source.status = SourceStatus.READY;
+      source.status = SourceStatus.PROCESSING;
       await sourceRepo.save(source);
 
       return result;

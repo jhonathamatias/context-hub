@@ -189,7 +189,7 @@ export class TranscriptionService {
       job.finishedAt = new Date();
       await jobRepo.save(job);
 
-      source.status = SourceStatus.READY;
+      source.status = SourceStatus.PROCESSING;
       await sourceRepo.save(source);
 
       return {

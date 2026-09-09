@@ -221,7 +221,7 @@ export class KnowledgeService {
       extractJob.finishedAt = new Date();
       await jobRepo.save(extractJob);
 
-      source.status = SourceStatus.READY;
+      source.status = SourceStatus.PROCESSING;
       await sourceRepo.save(source);
 
       return {
@@ -248,7 +248,7 @@ export class KnowledgeService {
       extractJob.finishedAt = new Date();
       await jobRepo.save(extractJob);
 
-      source.status = SourceStatus.READY;
+      source.status = SourceStatus.PROCESSING;
       await sourceRepo.save(source);
 
       return {

@@ -1,0 +1,31 @@
+import { Link } from "@tanstack/react-router";
+import type { Lesson } from "@/lib/api";
+import { formatDate, formatDuration } from "@/lib/format";
+import { LessonStatus } from "./lesson-status";
+
+export function LessonCard({ lesson }: { lesson: Lesson }) {
+  const date = formatDate(lesson.createdAt ?? lesson.updatedAt);
+  const duration = formatDuration(lesson.durationSeconds);
+  const meta = [date, duration].filter(Boolean).join(" · ");
+
+  return (
+    <Link
+      to="/aulas/$lessonId"
+      params={{ lessonId: lesson.id }}
+      className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-xl border border-border bg-card px-5 py-4 transition-colors hover:border-primary/40 hover:bg-accent/30"
+    >
+      <div className="min-w-0">
+        <h3 className="truncate text-base font-medium tracking-normal" style={{ fontFamily: "var(--font-sans)" }}>
+          {lesson.title}
+        </h3>
+        {meta ? <p className="mt-1 text-sm text-muted-foreground">{meta}</p> : null}
+        {lesson.topics && lesson.topics.length > 0 ? (
+          <p className="mt-1.5 truncate text-sm text-muted-foreground">
+            {lesson.topics.slice(0, 4).join(" · ")}
+          </p>
+        ) : null}
+      </div>
+      <LessonStatus status={lesson.status} />
+    </Link>
+  );
+}

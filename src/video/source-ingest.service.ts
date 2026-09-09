@@ -275,7 +275,8 @@ export class SourceIngestService {
     if (job && job.status !== ProcessingJobStatus.SUCCEEDED) {
       await this.state.markSucceeded(job);
     }
-    await this.state.setSourceStatus(source, SourceStatus.READY);
+    // Audio extract is an intermediate step — keep PROCESSING until later stages finish.
+    await this.state.setSourceStatus(source, SourceStatus.PROCESSING);
 
     return {
       sourceId: source.id,
@@ -326,7 +327,8 @@ export class SourceIngestService {
       await rename(processed.audioPath, paths.audio);
 
       await this.state.markSucceeded(extractJob);
-      await this.state.setSourceStatus(source, SourceStatus.READY);
+      // Not fully ready yet — transcription/knowledge/embeddings still to run.
+      await this.state.setSourceStatus(source, SourceStatus.PROCESSING);
 
       return {
         sourceId: source.id,
