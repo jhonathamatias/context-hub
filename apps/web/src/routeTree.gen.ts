@@ -15,6 +15,8 @@ import { Route as BuscarRouteImport } from './routes/buscar'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as PerguntarRouteImport } from './routes/perguntar'
 import { Route as AulasLessonIdRouteImport } from './routes/aulas.$lessonId'
+import { Route as ConfiguracoesIndexRouteImport } from './routes/configuracoes.index'
+import { Route as ConfiguracoesOnedriveRouteImport } from './routes/configuracoes.onedrive'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,31 +48,46 @@ const AulasLessonIdRoute = AulasLessonIdRouteImport.update({
   path: '/aulas/$lessonId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConfiguracoesIndexRoute = ConfiguracoesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ConfiguracoesRoute,
+} as any)
+const ConfiguracoesOnedriveRoute = ConfiguracoesOnedriveRouteImport.update({
+  id: '/onedrive',
+  path: '/onedrive',
+  getParentRoute: () => ConfiguracoesRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/biblioteca': typeof BibliotecaRoute
   '/buscar': typeof BuscarRoute
-  '/configuracoes': typeof ConfiguracoesRoute
+  '/configuracoes': typeof ConfiguracoesRouteWithChildren
   '/perguntar': typeof PerguntarRoute
   '/aulas/$lessonId': typeof AulasLessonIdRoute
+  '/configuracoes/onedrive': typeof ConfiguracoesOnedriveRoute
+  '/configuracoes/': typeof ConfiguracoesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/biblioteca': typeof BibliotecaRoute
   '/buscar': typeof BuscarRoute
-  '/configuracoes': typeof ConfiguracoesRoute
   '/perguntar': typeof PerguntarRoute
   '/aulas/$lessonId': typeof AulasLessonIdRoute
+  '/configuracoes/onedrive': typeof ConfiguracoesOnedriveRoute
+  '/configuracoes': typeof ConfiguracoesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/biblioteca': typeof BibliotecaRoute
   '/buscar': typeof BuscarRoute
-  '/configuracoes': typeof ConfiguracoesRoute
+  '/configuracoes': typeof ConfiguracoesRouteWithChildren
   '/perguntar': typeof PerguntarRoute
   '/aulas/$lessonId': typeof AulasLessonIdRoute
+  '/configuracoes/onedrive': typeof ConfiguracoesOnedriveRoute
+  '/configuracoes/': typeof ConfiguracoesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -81,14 +98,17 @@ export interface FileRouteTypes {
     | '/configuracoes'
     | '/perguntar'
     | '/aulas/$lessonId'
+    | '/configuracoes/onedrive'
+    | '/configuracoes/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/biblioteca'
     | '/buscar'
-    | '/configuracoes'
     | '/perguntar'
     | '/aulas/$lessonId'
+    | '/configuracoes/onedrive'
+    | '/configuracoes'
   id:
     | '__root__'
     | '/'
@@ -97,13 +117,15 @@ export interface FileRouteTypes {
     | '/configuracoes'
     | '/perguntar'
     | '/aulas/$lessonId'
+    | '/configuracoes/onedrive'
+    | '/configuracoes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BibliotecaRoute: typeof BibliotecaRoute
   BuscarRoute: typeof BuscarRoute
-  ConfiguracoesRoute: typeof ConfiguracoesRoute
+  ConfiguracoesRoute: typeof ConfiguracoesRouteWithChildren
   PerguntarRoute: typeof PerguntarRoute
   AulasLessonIdRoute: typeof AulasLessonIdRoute
 }
@@ -152,14 +174,42 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AulasLessonIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/configuracoes/': {
+      id: '/configuracoes/'
+      path: '/'
+      fullPath: '/configuracoes/'
+      preLoaderRoute: typeof ConfiguracoesIndexRouteImport
+      parentRoute: typeof ConfiguracoesRoute
+    }
+    '/configuracoes/onedrive': {
+      id: '/configuracoes/onedrive'
+      path: '/onedrive'
+      fullPath: '/configuracoes/onedrive'
+      preLoaderRoute: typeof ConfiguracoesOnedriveRouteImport
+      parentRoute: typeof ConfiguracoesRoute
+    }
   }
 }
+
+interface ConfiguracoesRouteChildren {
+  ConfiguracoesOnedriveRoute: typeof ConfiguracoesOnedriveRoute
+  ConfiguracoesIndexRoute: typeof ConfiguracoesIndexRoute
+}
+
+const ConfiguracoesRouteChildren: ConfiguracoesRouteChildren = {
+  ConfiguracoesOnedriveRoute: ConfiguracoesOnedriveRoute,
+  ConfiguracoesIndexRoute: ConfiguracoesIndexRoute,
+}
+
+const ConfiguracoesRouteWithChildren = ConfiguracoesRoute._addFileChildren(
+  ConfiguracoesRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BibliotecaRoute: BibliotecaRoute,
   BuscarRoute: BuscarRoute,
-  ConfiguracoesRoute: ConfiguracoesRoute,
+  ConfiguracoesRoute: ConfiguracoesRouteWithChildren,
   PerguntarRoute: PerguntarRoute,
   AulasLessonIdRoute: AulasLessonIdRoute,
 }

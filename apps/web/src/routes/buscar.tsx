@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { SearchResult } from "@/components/search-result";
 import { EmptyState, LoadingSkeleton, SoftError } from "@/components/states";
+import { PageFrame, PageFrameWidth } from "@/components/page-frame";
 
 type SearchParams = { q?: string };
 
@@ -40,9 +41,9 @@ function SearchPage() {
   });
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-5 py-10 sm:px-8 sm:py-14">
-      <h1 className="display-title text-3xl sm:text-4xl">Buscar nas aulas</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
+    <PageFrame width={PageFrameWidth.Lg}>
+      <h1 className="display-title text-2xl sm:text-3xl">Buscar nas aulas</h1>
+      <p className="mt-0.5 text-sm text-muted-foreground">
         Encontre o trecho exato, com o momento do vídeo.
       </p>
 
@@ -51,9 +52,9 @@ function SearchPage() {
           e.preventDefault();
           if (term.trim()) void navigate({ to: "/buscar", search: { q: term.trim() } });
         }}
-        className="mt-6"
+        className="mt-4"
       >
-        <div className="flex items-center gap-2 rounded-2xl border border-border bg-card px-4 py-3 shadow-soft focus-within:border-primary/50">
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 focus-within:border-primary/50">
           <Search className="size-5 shrink-0 text-muted-foreground" />
           <input
             value={term}
@@ -67,7 +68,7 @@ function SearchPage() {
         </div>
       </form>
 
-      <div className="mt-8 space-y-3">
+      <div className="mt-4 space-y-2">
         {!q ? (
           <EmptyState
             title="O que você quer rever?"
@@ -86,6 +87,6 @@ function SearchPage() {
           results.data?.map((hit, i) => <SearchResult key={`${hit.lessonId}-${i}`} hit={hit} />)
         )}
       </div>
-    </div>
+    </PageFrame>
   );
 }

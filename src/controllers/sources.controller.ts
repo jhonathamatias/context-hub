@@ -5,10 +5,13 @@ import {
   getParams,
   getQuery,
   type IngestFilesystemBody,
+  type IngestOneDriveBody,
   type ListSourcesQuery,
+  type PreviewOneDriveBody,
   type SourceIdParams,
 } from '../http';
 import { JobQueueService } from '../jobs';
+import { IntegrationService } from '../integrations';
 import {
   SourceQueryService,
   toPublicAcceptResult,
@@ -22,6 +25,7 @@ export class SourcesController {
     private readonly ingestService: SourceIngestService,
     private readonly sourceQuery: SourceQueryService,
     private readonly jobs: JobQueueService,
+    private readonly integrations: IntegrationService,
   ) {}
 
   async upload(request: FastifyRequest, reply: FastifyReply) {
@@ -63,6 +67,55 @@ export class SourcesController {
     await this.jobs.enqueueVideoExtract(accepted.sourceId);
 
     return reply.status(202).send(toPublicAcceptResult(accepted));
+  }
+
+  async previewOneDrive(request: FastifyRequest, reply: FastifyReply) {
+    const body = getBody<PreviewOneDriveBody>(request);
+    const shareUrl = await this.integrations.resolveOneDriveShareUrl(
+      body.integrationId,
+      body.url,
+    );
+    const accessToken = await this.integrations.resolveOneDriveAccessToken(
+      body.integrationId,
+    );
+    const videos = await this.ingestService.previewOneDrive(
+      {
+        shareUrl,
+        ...(accessToken ? { accessToken } : {}),
+      },
+      request.log,
+    );
+    return reply.status(200).send({ items: videos });
+  }
+
+  async fromOneDrive(request: FastifyRequest, reply: FastifyReply) {
+    const body = getBody<IngestOneDriveBody>(request);
+    const shareUrl = await this.integrations.resolveOneDriveShareUrl(
+      body.integrationId,
+      body.url,
+    );
+    const accessToken = await this.integrations.resolveOneDriveAccessToken(
+      body.integrationId,
+    );
+    const input = {
+      shareUrl,
+      ...(accessToken ? { accessToken } : {}),
+      ...(body.itemId ? { itemId: body.itemId } : {}),
+      ...(body.importAll !== undefined ? { importAll: body.importAll } : {}),
+    };
+    const accepted = await this.ingestService.acceptFromOneDrive(
+      input,
+      request.log,
+    );
+
+    for (const item of accepted) {
+      await this.jobs.enqueueVideoExtract(item.sourceId);
+    }
+
+    return reply.status(202).send({
+      items: accepted.map(toPublicAcceptResult),
+      count: accepted.length,
+    });
   }
 
   async list(request: FastifyRequest, reply: FastifyReply) {

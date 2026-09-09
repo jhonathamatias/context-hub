@@ -3,7 +3,9 @@ import { Container } from 'typedi';
 import { SourcesController } from '../controllers';
 import {
   ingestFilesystemBodySchema,
+  ingestOneDriveBodySchema,
   listSourcesQuerySchema,
+  previewOneDriveBodySchema,
   sourceIdParamsSchema,
   validateZod,
 } from '../http';
@@ -49,6 +51,33 @@ export async function sourcesRoute(app: FastifyInstance) {
       },
     },
     (request, reply) => controller.fromFilesystem(request, reply),
+  );
+
+  app.post(
+    '/sources/onedrive/preview',
+    {
+      preHandler: validateZod({ body: previewOneDriveBodySchema }),
+      schema: {
+        tags: ['sources'],
+        summary: 'List video files behind a OneDrive / SharePoint sharing link',
+        response: { 400: errorResponseSchema },
+      },
+    },
+    (request, reply) => controller.previewOneDrive(request, reply),
+  );
+
+  app.post(
+    '/sources/onedrive',
+    {
+      preHandler: validateZod({ body: ingestOneDriveBodySchema }),
+      schema: {
+        tags: ['sources'],
+        summary:
+          'Import video(s) from a OneDrive / SharePoint sharing link into the pipeline',
+        response: { 400: errorResponseSchema },
+      },
+    },
+    (request, reply) => controller.fromOneDrive(request, reply),
   );
 
   app.get(

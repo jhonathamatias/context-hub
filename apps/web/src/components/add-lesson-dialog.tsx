@@ -12,7 +12,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-export function AddLessonDialog({ trigger }: { trigger: ReactNode }) {
+export function AddLessonDialog({
+  trigger,
+  onUploaded,
+}: {
+  trigger: ReactNode;
+  onUploaded?: (sourceId?: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -20,8 +26,9 @@ export function AddLessonDialog({ trigger }: { trigger: ReactNode }) {
 
   const upload = useMutation({
     mutationFn: (f: File) => api.uploadVideo(f),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["lessons"] });
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['lessons'] });
+      onUploaded?.(result.id);
     },
   });
 

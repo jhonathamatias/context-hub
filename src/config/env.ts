@@ -72,6 +72,9 @@ const rawEnvSchema = z.object({
   JOB_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   JOB_CONCURRENCY: z.coerce.number().int().positive().default(2),
   JOB_LOCK_DURATION_MS: z.coerce.number().int().positive().default(300_000),
+
+  /** Optional Microsoft Graph token for private OneDrive / SharePoint shares. */
+  ONEDRIVE_ACCESS_TOKEN: optionalNonEmptyString,
 });
 
 export type AppEnv = {
@@ -118,6 +121,9 @@ export type AppEnv = {
     attempts: number;
     concurrency: number;
     lockDurationMs: number;
+  };
+  onedrive: {
+    accessToken?: string;
   };
 };
 
@@ -264,6 +270,11 @@ export function loadEnv(
       attempts: raw.JOB_ATTEMPTS,
       concurrency: raw.JOB_CONCURRENCY,
       lockDurationMs: raw.JOB_LOCK_DURATION_MS,
+    },
+    onedrive: {
+      ...(raw.ONEDRIVE_ACCESS_TOKEN
+        ? { accessToken: raw.ONEDRIVE_ACCESS_TOKEN }
+        : {}),
     },
   };
 }

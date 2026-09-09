@@ -65,6 +65,26 @@ export type ChatAnswer = {
   references: ChatReference[];
 };
 
+export type OneDriveListedVideo = {
+  id: string;
+  name: string;
+  size: number | null;
+  mimeType: string | null;
+  webUrl: string | null;
+};
+
+export type IntegrationKind = 'ONEDRIVE';
+
+export type Integration = {
+  id: string;
+  kind: IntegrationKind;
+  name: string;
+  hasAccessToken: boolean;
+  shareUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -88,7 +108,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     throw new ApiError('offline', 0);
   }
-  if (!res.ok) throw new ApiError('request failed', res.status);
+  if (!res.ok) {
+    let message = 'request failed';
+    try {
+      const body = (await res.json()) as { message?: string };
+      if (body.message) message = body.message;
+    } catch {
+      // keep default
+    }
+    throw new ApiError(message, res.status);
+  }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
@@ -277,6 +306,19 @@ function normalizeHit(raw: unknown): SearchHit {
   };
 }
 
+function normalizeIntegration(raw: unknown): Integration {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  return {
+    id: String(pick<string>(o, ['id']) ?? ''),
+    kind: (pick<string>(o, ['kind']) as IntegrationKind) ?? 'ONEDRIVE',
+    name: String(pick<string>(o, ['name']) ?? 'Integração'),
+    hasAccessToken: Boolean(pick<boolean>(o, ['hasAccessToken'])),
+    shareUrl: pick<string>(o, ['shareUrl']) ?? null,
+    createdAt: String(pick<string>(o, ['createdAt']) ?? ''),
+    updatedAt: String(pick<string>(o, ['updatedAt']) ?? ''),
+  };
+}
+
 /* ---------------------------------- endpoints --------------------------------- */
 
 export const api = {
@@ -366,6 +408,107 @@ export const api = {
       body: form,
     })) as Record<string, unknown>;
     return { id: pick<string>(data ?? {}, ['id', 'sourceId']) };
+  },
+
+  previewOneDrive: async (input: {
+    url?: string;
+    integrationId?: string;
+  }): Promise<OneDriveListedVideo[]> => {
+    const body: Record<string, unknown> = {};
+    if (input.url) body.url = input.url;
+    if (input.integrationId) body.integrationId = input.integrationId;
+    const data = (await request<unknown>('/sources/onedrive/preview', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })) as Record<string, unknown>;
+    return asArray(data).map((raw) => {
+      const o = (raw ?? {}) as Record<string, unknown>;
+      return {
+        id: String(pick<string>(o, ['id']) ?? ''),
+        name: String(pick<string>(o, ['name']) ?? 'video'),
+        size: Number(pick<number>(o, ['size']) ?? 0) || null,
+        mimeType: pick<string>(o, ['mimeType']) ?? null,
+        webUrl: pick<string>(o, ['webUrl']) ?? null,
+      };
+    });
+  },
+
+  importFromOneDrive: async (input: {
+    url?: string;
+    integrationId?: string;
+    itemId?: string;
+    importAll?: boolean;
+  }): Promise<{ count: number; sourceIds: string[] }> => {
+    const body: Record<string, unknown> = {};
+    if (input.url) body.url = input.url;
+    if (input.integrationId) body.integrationId = input.integrationId;
+    if (input.itemId) body.itemId = input.itemId;
+    if (input.importAll) body.importAll = true;
+    const data = (await request<unknown>('/sources/onedrive', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })) as Record<string, unknown>;
+    const items = asArray(data);
+    return {
+      count: Number(pick<number>(data ?? {}, ['count']) ?? items.length),
+      sourceIds: items
+        .map((raw) =>
+          String(
+            pick<string>((raw ?? {}) as Record<string, unknown>, [
+              'sourceId',
+              'id',
+            ]) ?? '',
+          ),
+        )
+        .filter(Boolean),
+    };
+  },
+
+  listIntegrations: async (kind?: IntegrationKind): Promise<Integration[]> => {
+    const qs = kind ? `?kind=${encodeURIComponent(kind)}` : '';
+    const data = (await request<unknown>(`/integrations${qs}`)) as Record<
+      string,
+      unknown
+    >;
+    return asArray(data).map(normalizeIntegration);
+  },
+
+  createIntegration: async (input: {
+    kind?: IntegrationKind;
+    name: string;
+    accessToken?: string;
+    shareUrl?: string;
+  }): Promise<Integration> => {
+    const data = await request<unknown>('/integrations', {
+      method: 'POST',
+      body: JSON.stringify({
+        kind: input.kind ?? 'ONEDRIVE',
+        name: input.name,
+        ...(input.accessToken ? { accessToken: input.accessToken } : {}),
+        ...(input.shareUrl ? { shareUrl: input.shareUrl } : {}),
+      }),
+    });
+    return normalizeIntegration(data);
+  },
+
+  updateIntegration: async (
+    id: string,
+    input: {
+      name?: string;
+      accessToken?: string | null;
+      shareUrl?: string | null;
+      clearAccessToken?: boolean;
+    },
+  ): Promise<Integration> => {
+    const data = await request<unknown>(`/integrations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return normalizeIntegration(data);
+  },
+
+  deleteIntegration: async (id: string): Promise<void> => {
+    await request<unknown>(`/integrations/${id}`, { method: 'DELETE' });
   },
 
   search: async (query: string): Promise<SearchHit[]> => {

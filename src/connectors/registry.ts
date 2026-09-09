@@ -1,6 +1,7 @@
 import { Service } from 'typedi';
 import { LocalFilesystemVideoConnector } from './local-filesystem.connector';
 import { LocalUploadVideoConnector } from './local-upload.connector';
+import { OneDriveVideoConnector } from './onedrive.connector';
 import type { ConnectorKind, SourceConnector } from './types';
 
 /**
@@ -12,6 +13,7 @@ export class SourceConnectorRegistry {
   constructor(
     private readonly localUpload: LocalUploadVideoConnector,
     private readonly localFilesystem: LocalFilesystemVideoConnector,
+    private readonly oneDrive: OneDriveVideoConnector,
   ) {}
 
   get(kind: ConnectorKind): SourceConnector {
@@ -20,6 +22,8 @@ export class SourceConnectorRegistry {
         return this.localUpload;
       case 'local-filesystem':
         return this.localFilesystem;
+      case 'onedrive':
+        return this.oneDrive;
       default: {
         const exhaustive: never = kind;
         throw new Error(`Unsupported connector kind: ${String(exhaustive)}`);
@@ -28,6 +32,6 @@ export class SourceConnectorRegistry {
   }
 
   list(): SourceConnector[] {
-    return [this.localUpload, this.localFilesystem];
+    return [this.localUpload, this.localFilesystem, this.oneDrive];
   }
 }

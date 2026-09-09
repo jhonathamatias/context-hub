@@ -39,3 +39,7 @@ export enum KnowledgeExtractionStatus {
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED',
 }
+
+export enum IntegrationKind {
+  ONEDRIVE = 'ONEDRIVE',
+}

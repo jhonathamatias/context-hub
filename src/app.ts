@@ -16,6 +16,7 @@ import {
 } from './observability';
 import { RedisService } from './redis';
 import { healthRoute } from './routes/health.route';
+import { integrationsRoute } from './routes/integrations.route';
 import { searchRoute } from './routes/search.route';
 import { sourcesRoute } from './routes/sources.route';
 
@@ -48,6 +49,7 @@ export async function buildApp() {
       tags: [
         { name: 'health' },
         { name: 'sources' },
+        { name: 'integrations' },
         { name: 'search' },
         { name: 'chat' },
       ],
@@ -113,6 +115,7 @@ export async function buildApp() {
 
   await app.register(healthRoute);
   await app.register(sourcesRoute);
+  await app.register(integrationsRoute);
   await app.register(searchRoute);
 
   return app;

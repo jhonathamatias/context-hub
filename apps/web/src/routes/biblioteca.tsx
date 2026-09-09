@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { LessonCard } from "@/components/lesson-card";
 import { AddLessonDialog } from "@/components/add-lesson-dialog";
 import { EmptyState, LoadingSkeleton, SoftError } from "@/components/states";
+import { PageFrame, PageFrameWidth } from "@/components/page-frame";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/biblioteca")({
@@ -65,11 +66,11 @@ function LibraryPage() {
   }, [lessons.data, filter, term]);
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-5 py-10 sm:px-8 sm:py-14">
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+    <PageFrame width={PageFrameWidth.Xl}>
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
         <div className="min-w-0">
-          <h1 className="display-title text-3xl sm:text-4xl">Biblioteca</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="display-title text-2xl sm:text-3xl">Biblioteca</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
             {lessons.data ? `${lessons.data.length} aulas` : "Suas aulas gravadas"}
           </p>
         </div>
@@ -82,7 +83,7 @@ function LibraryPage() {
         />
       </header>
 
-      <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 focus-within:border-primary/50">
           <Search className="size-4 shrink-0 text-muted-foreground" />
           <input
@@ -96,6 +97,7 @@ function LibraryPage() {
           {filters.map((f) => (
             <button
               key={f.key}
+              type="button"
               onClick={() => setFilter(f.key)}
               className={cn(
                 "rounded-full border px-3 py-1 text-sm transition-colors",
@@ -110,7 +112,7 @@ function LibraryPage() {
         </div>
       </div>
 
-      <div className="mt-6 space-y-3">
+      <div className="mt-4 space-y-2">
         {lessons.isLoading ? (
           <LoadingSkeleton />
         ) : lessons.isError ? (
@@ -125,6 +127,6 @@ function LibraryPage() {
           visible.map((lesson) => <LessonCard key={lesson.id} lesson={lesson} />)
         )}
       </div>
-    </div>
+    </PageFrame>
   );
 }

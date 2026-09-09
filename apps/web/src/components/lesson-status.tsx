@@ -13,12 +13,12 @@ export function LessonStatus({ status, className }: { status: Status; className?
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium",
+        'inline-flex shrink-0 items-center gap-1.5 rounded-sm border px-2 py-0.5 text-xs font-medium',
         styles[status],
         className,
       )}
     >
-      {status === "PROCESSING" ? (
+      {status === 'PROCESSING' ? (
         <span className="size-1.5 animate-pulse rounded-full bg-current" />
       ) : null}
       {statusLabel[status]}

@@ -6,10 +6,12 @@ import type {
   CollectedSourceItem,
   LocalFilesystemInput,
   LocalUploadInput,
+  OneDriveInput,
 } from '../connectors';
 import {
   LocalFilesystemVideoConnector,
   LocalUploadVideoConnector,
+  OneDriveVideoConnector,
 } from '../connectors';
 import { env } from '../config/env';
 import {
@@ -62,6 +64,7 @@ export class SourceIngestService {
     private readonly videoProcessor: FfmpegVideoProcessor,
     private readonly localUploadConnector: LocalUploadVideoConnector,
     private readonly localFilesystemConnector: LocalFilesystemVideoConnector,
+    private readonly oneDriveConnector: OneDriveVideoConnector,
   ) {}
 
   async acceptUpload(input: IngestVideoInput): Promise<AcceptIngestResult> {
@@ -89,6 +92,31 @@ export class SourceIngestService {
       'Filesystem connector returned no items',
     );
     return this.acceptCollected(item, logger);
+  }
+
+  async previewOneDrive(
+    input: Pick<OneDriveInput, 'shareUrl' | 'accessToken'>,
+    logger: FastifyBaseLogger,
+  ) {
+    return this.oneDriveConnector.listVideos(input.shareUrl, {
+      ...(input.accessToken ? { accessToken: input.accessToken } : {}),
+      logger,
+    });
+  }
+
+  async acceptFromOneDrive(
+    input: OneDriveInput,
+    logger: FastifyBaseLogger,
+  ): Promise<AcceptIngestResult[]> {
+    const items = await this.oneDriveConnector.collect(input, { logger });
+    if (items.length === 0) {
+      throw new VideoValidationError('OneDrive connector returned no items');
+    }
+    const accepted: AcceptIngestResult[] = [];
+    for (const item of items) {
+      accepted.push(await this.acceptCollected(item, logger));
+    }
+    return accepted;
   }
 
   /** Persist collected video + INGEST job. ffmpeg runs in `extractAudio`. */

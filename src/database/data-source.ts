@@ -2,6 +2,7 @@ import type { DataSourceOptions } from 'typeorm';
 import { DataSource } from 'typeorm';
 import { env } from '../config/env';
 import { ChunkEmbedding } from './entities/chunk-embedding.entity';
+import { Integration } from './entities/integration.entity';
 import { KnowledgeExtraction } from './entities/knowledge-extraction.entity';
 import { ProcessingJob } from './entities/processing-job.entity';
 import { Source } from './entities/source.entity';
@@ -13,6 +14,7 @@ import { RenameColumnsToSnakeCase1788915000000 } from './migrations/178891500000
 import { AddKnowledgeTables1788918000000 } from './migrations/1788918000000-AddKnowledgeTables';
 import { AddChunkEmbeddings1788921000000 } from './migrations/1788921000000-AddChunkEmbeddings';
 import { EnablePgvector1788924000000 } from './migrations/1788924000000-EnablePgvector';
+import { AddIntegrations1788927000000 } from './migrations/1788927000000-AddIntegrations';
 import { SnakeNamingStrategy } from './snake-naming.strategy';
 
 export const dataSourceOptions: DataSourceOptions = {
@@ -25,6 +27,7 @@ export const dataSourceOptions: DataSourceOptions = {
     TranscriptChunk,
     KnowledgeExtraction,
     ChunkEmbedding,
+    Integration,
   ],
   migrations: [
     InitSourceAndProcessingJob1788825600000,
@@ -33,6 +36,7 @@ export const dataSourceOptions: DataSourceOptions = {
     AddKnowledgeTables1788918000000,
     AddChunkEmbeddings1788921000000,
     EnablePgvector1788924000000,
+    AddIntegrations1788927000000,
   ],
   namingStrategy: new SnakeNamingStrategy(),
   synchronize: false,

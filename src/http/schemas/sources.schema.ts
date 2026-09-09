@@ -13,6 +13,30 @@ export const ingestFilesystemBodySchema = z.object({
 
 export type IngestFilesystemBody = z.infer<typeof ingestFilesystemBodySchema>;
 
+export const ingestOneDriveBodySchema = z
+  .object({
+    url: z.string().trim().url('url must be a valid OneDrive / SharePoint link').optional(),
+    integrationId: z.uuid().optional(),
+    itemId: z.string().trim().min(1).optional(),
+    importAll: z.boolean().optional(),
+  })
+  .refine((body) => Boolean(body.url || body.integrationId), {
+    message: 'url or integrationId is required',
+  });
+
+export type IngestOneDriveBody = z.infer<typeof ingestOneDriveBodySchema>;
+
+export const previewOneDriveBodySchema = z
+  .object({
+    url: z.string().trim().url('url must be a valid OneDrive / SharePoint link').optional(),
+    integrationId: z.uuid().optional(),
+  })
+  .refine((body) => Boolean(body.url || body.integrationId), {
+    message: 'url or integrationId is required',
+  });
+
+export type PreviewOneDriveBody = z.infer<typeof previewOneDriveBodySchema>;
+
 export const listSourcesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),

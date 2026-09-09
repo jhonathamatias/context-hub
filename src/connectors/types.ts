@@ -2,11 +2,11 @@ import type { FastifyBaseLogger } from 'fastify';
 import type { SourceType } from '../database/enums';
 
 /**
- * Implemented now: local-upload, local-filesystem.
+ * Implemented now: local-upload, local-filesystem, onedrive.
  * Reserved for later (do not implement without validated need):
  * youtube | github | jira | jenkins | sentry
  */
-export type ConnectorKind = 'local-upload' | 'local-filesystem';
+export type ConnectorKind = 'local-upload' | 'local-filesystem' | 'onedrive';
 
 export type SourceConnectorIdentity = {
   kind: ConnectorKind;

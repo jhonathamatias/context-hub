@@ -1,0 +1,15 @@
+---
+description: Context Hub web UI — CapCut-like dark editor, anti-Lovable
+globs: apps/web/**/*.{tsx,ts,css}
+alwaysApply: false
+---
+
+# apps/web visual rules
+
+Follow `.cursor/skills/context-hub-ui/SKILL.md`.
+
+**Direction:** dark CapCut-like studio editor (near-black panels, mint/teal accent).
+
+**Ban Lovable tells:** purple/indigo, rainbow gradients, glow halos, “C” gradient tile logo, pill chip clusters, Sora/Manrope/Inter as brand, cream+terracotta editorial.
+
+**Do:** solid mint CTAs, Space Grotesk + IBM Plex Sans, layered dark panels, brand wordmark “Context Hub”.
