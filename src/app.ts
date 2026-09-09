@@ -3,15 +3,28 @@ import Fastify from 'fastify';
 import { Container } from 'typedi';
 import { env } from './config/env';
 import { DatabaseService } from './database';
+import {
+  buildLoggerOptions,
+  generateRequestId,
+  registerErrorHandler,
+} from './observability';
 import { RedisService } from './redis';
 import { healthRoute } from './routes/health.route';
 
 export async function buildApp() {
   const app = Fastify({
-    logger: {
-      level: env.logLevel,
-    },
+    logger: buildLoggerOptions(),
+    genReqId: generateRequestId,
+    requestIdHeader: 'x-request-id',
+    requestIdLogLabel: 'requestId',
+    disableRequestLogging: false,
   });
+
+  app.addHook('onRequest', async (request, reply) => {
+    reply.header('x-request-id', request.id);
+  });
+
+  registerErrorHandler(app);
 
   const database = Container.get(DatabaseService);
   const redis = Container.get(RedisService);
