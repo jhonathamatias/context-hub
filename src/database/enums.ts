@@ -13,6 +13,8 @@ export enum ProcessingStage {
   INGEST = 'INGEST',
   EXTRACT_AUDIO = 'EXTRACT_AUDIO',
   TRANSCRIBE = 'TRANSCRIBE',
+  CHUNK = 'CHUNK',
+  EXTRACT_KNOWLEDGE = 'EXTRACT_KNOWLEDGE',
   EMBED = 'EMBED',
   INDEX = 'INDEX',
 }
@@ -25,6 +27,13 @@ export enum ProcessingJobStatus {
 }
 
 export enum TranscriptionStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+}
+
+export enum KnowledgeExtractionStatus {
   PENDING = 'PENDING',
   PROCESSING = 'PROCESSING',
   COMPLETED = 'COMPLETED',

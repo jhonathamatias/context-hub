@@ -45,6 +45,11 @@ const rawEnvSchema = z.object({
   OPENAI_API_KEY: optionalNonEmptyString,
   OPENAI_BASE_URL: optionalNonEmptyString,
   OPENAI_MODEL: optionalNonEmptyString,
+
+  GEMINI_API_KEY: optionalNonEmptyString,
+  GEMINI_MODEL: z.string().min(1).default('gemini-3.6-flash'),
+
+  KNOWLEDGE_PROVIDER: z.enum(['openai', 'gemini']).default('openai'),
 });
 
 export type AppEnv = {
@@ -69,6 +74,11 @@ export type AppEnv = {
     baseUrl?: string;
     model?: string;
   };
+  gemini: {
+    apiKey?: string;
+    model: string;
+  };
+  knowledgeProvider: 'openai' | 'gemini';
 };
 
 function buildDatabaseUrl(raw: z.infer<typeof rawEnvSchema>): string {
@@ -160,6 +170,15 @@ export function loadEnv(
   }
   if (raw.OPENAI_MODEL !== undefined) {
     openai.model = raw.OPENAI_MODEL;
+  } else {
+    openai.model = 'gpt-4o-mini';
+  }
+
+  const gemini: AppEnv['gemini'] = {
+    model: raw.GEMINI_MODEL,
+  };
+  if (raw.GEMINI_API_KEY !== undefined) {
+    gemini.apiKey = raw.GEMINI_API_KEY;
   }
 
   return {
@@ -180,6 +199,8 @@ export function loadEnv(
       timeoutMs: raw.WHISPER_TIMEOUT_MS,
     },
     openai,
+    gemini,
+    knowledgeProvider: raw.KNOWLEDGE_PROVIDER,
   };
 }
 

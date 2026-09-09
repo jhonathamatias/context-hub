@@ -16,6 +16,11 @@ import {
   LocalWhisperTranscriptionProvider,
   TRANSCRIPTION_PROVIDER,
 } from './transcription';
+import {
+  GeminiKnowledgeExtractionProvider,
+  KNOWLEDGE_EXTRACTION_PROVIDER,
+  OpenAiKnowledgeExtractionProvider,
+} from './knowledge';
 
 export async function buildApp() {
   const app = Fastify({
@@ -43,6 +48,16 @@ export async function buildApp() {
   Container.set(
     TRANSCRIPTION_PROVIDER,
     Container.get(LocalWhisperTranscriptionProvider),
+  );
+  Container.set(
+    KNOWLEDGE_EXTRACTION_PROVIDER,
+    env.knowledgeProvider === 'gemini'
+      ? Container.get(GeminiKnowledgeExtractionProvider)
+      : Container.get(OpenAiKnowledgeExtractionProvider),
+  );
+  app.log.info(
+    { knowledgeProvider: env.knowledgeProvider },
+    'Knowledge extraction provider selected',
   );
 
   const database = Container.get(DatabaseService);

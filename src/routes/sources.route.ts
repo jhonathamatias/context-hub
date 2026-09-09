@@ -1,11 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { Container } from 'typedi';
+import { KnowledgeService } from '../knowledge';
 import { TranscriptionService } from '../transcription';
 import { SourceIngestService } from '../video';
 
 export async function sourcesRoute(app: FastifyInstance) {
   const ingestService = Container.get(SourceIngestService);
   const transcriptionService = Container.get(TranscriptionService);
+  const knowledgeService = Container.get(KnowledgeService);
 
   app.post('/sources/upload', async (request, reply) => {
     const data = await request.file();
@@ -29,7 +31,6 @@ export async function sourcesRoute(app: FastifyInstance) {
 
       return reply.status(201).send(result);
     } catch (error) {
-      // Drain remaining stream on failure to avoid hanging sockets.
       data.file.resume();
       throw error;
     }
@@ -44,5 +45,14 @@ export async function sourcesRoute(app: FastifyInstance) {
     );
 
     return reply.status(201).send(result);
+  });
+
+  app.post('/sources/:sourceId/knowledge', async (request, reply) => {
+    const { sourceId } = request.params as { sourceId: string };
+
+    const result = await knowledgeService.processSource(sourceId, request.log);
+
+    const statusCode = result.knowledgeStatus === 'FAILED' ? 207 : 201;
+    return reply.status(statusCode).send(result);
   });
 }
