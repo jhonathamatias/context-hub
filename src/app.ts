@@ -28,6 +28,11 @@ import {
   OpenAiKnowledgeExtractionProvider,
 } from './knowledge';
 import { PgVectorRepository, VECTOR_REPOSITORY } from './search';
+import {
+  ANSWER_GENERATION_PROVIDER,
+  GeminiAnswerGenerationProvider,
+  OpenAiAnswerGenerationProvider,
+} from './context';
 
 export async function buildApp() {
   const app = Fastify({
@@ -69,9 +74,21 @@ export async function buildApp() {
       : Container.get(OpenAiEmbeddingProvider),
   );
   Container.set(VECTOR_REPOSITORY, Container.get(PgVectorRepository));
+  Container.set(
+    ANSWER_GENERATION_PROVIDER,
+    env.knowledgeProvider === 'gemini'
+      ? Container.get(GeminiAnswerGenerationProvider)
+      : Container.get(OpenAiAnswerGenerationProvider),
+  );
   app.log.info(
     { knowledgeProvider: env.knowledgeProvider },
     'Knowledge extraction provider selected',
+  );
+  app.log.info(
+    {
+      answerProvider: env.knowledgeProvider,
+    },
+    'Answer generation provider selected',
   );
   app.log.info(
     {

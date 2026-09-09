@@ -6,4 +6,5 @@ export async function searchRoute(app: FastifyInstance) {
   const controller = Container.get(SearchController);
 
   app.post('/search', (request, reply) => controller.search(request, reply));
+  app.post('/ask', (request, reply) => controller.ask(request, reply));
 }

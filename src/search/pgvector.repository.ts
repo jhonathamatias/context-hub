@@ -11,6 +11,7 @@ type SearchRow = {
   embedding_id: string;
   chunk_id: string;
   source_id: string;
+  source_name: string;
   transcription_id: string;
   chunk_index: number;
   text: string;
@@ -46,6 +47,7 @@ export class PgVectorRepository implements VectorRepository {
           ce."id" AS embedding_id,
           ce."chunk_id" AS chunk_id,
           ce."source_id" AS source_id,
+          s."original_name" AS source_name,
           ce."transcription_id" AS transcription_id,
           tc."chunk_index" AS chunk_index,
           tc."text" AS text,
@@ -57,6 +59,7 @@ export class PgVectorRepository implements VectorRepository {
           (ce."embedding" <=> $1::vector) AS distance
         FROM "chunk_embeddings" ce
         INNER JOIN "transcript_chunks" tc ON tc."id" = ce."chunk_id"
+        INNER JOIN "sources" s ON s."id" = ce."source_id"
         WHERE ce."embedding" IS NOT NULL
           AND ce."model" = $2
           AND ($3::uuid IS NULL OR ce."source_id" = $3::uuid)
@@ -72,6 +75,7 @@ export class PgVectorRepository implements VectorRepository {
         embeddingId: row.embedding_id,
         chunkId: row.chunk_id,
         sourceId: row.source_id,
+        sourceName: row.source_name,
         transcriptionId: row.transcription_id,
         chunkIndex: Number(row.chunk_index),
         text: row.text,

@@ -11,6 +11,7 @@ export type SemanticSearchHit = {
   embeddingId: string;
   chunkId: string;
   sourceId: string;
+  sourceName: string;
   transcriptionId: string;
   chunkIndex: number;
   text: string;
