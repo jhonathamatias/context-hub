@@ -1,23 +1,20 @@
-import type { SourceStatus, TranscriptionStatus } from '../database/enums';
-import type { VideoMetadata } from '../video/types';
+import type { SourceStatus } from '../database/enums';
 
-/** Strip internal filesystem paths from ingest responses. */
-export function toPublicIngestResult(result: {
+/** Public response after accepting a video (extract runs in the worker). */
+export function toPublicAcceptResult(result: {
   sourceId: string;
   jobId: string;
   connectorKind: string;
   originalName: string;
   status: SourceStatus;
-  metadata: VideoMetadata;
+  queuedJob: 'video.extract';
 }): {
   sourceId: string;
   jobId: string;
   connectorKind: string;
   originalName: string;
   status: SourceStatus;
-  metadata: Omit<VideoMetadata, 'streams'> & {
-    streamCount: number;
-  };
+  queued: 'video.extract';
 } {
   return {
     sourceId: result.sourceId,
@@ -25,53 +22,24 @@ export function toPublicIngestResult(result: {
     connectorKind: result.connectorKind,
     originalName: result.originalName,
     status: result.status,
-    metadata: {
-      durationSeconds: result.metadata.durationSeconds,
-      formatName: result.metadata.formatName,
-      sizeBytes: result.metadata.sizeBytes,
-      video: result.metadata.video,
-      audio: result.metadata.audio,
-      streamCount: result.metadata.streams.length,
-    },
+    queued: result.queuedJob,
   };
 }
 
-/** Strip raw/structured filesystem paths from transcription responses. */
-export function toPublicTranscribeResult(result: {
-  transcriptionId: string;
+export function toPublicQueuedResult(result: {
   sourceId: string;
-  status: TranscriptionStatus;
-  provider: string;
-  attempt: number;
-  language: string | null;
-  fullText: string | null;
-  segments: Array<{
-    startSeconds: number;
-    endSeconds: number;
-    text: string;
-  }>;
+  queueJobId: string;
+  jobName: string;
 }): {
-  transcriptionId: string;
   sourceId: string;
-  status: TranscriptionStatus;
-  provider: string;
-  attempt: number;
-  language: string | null;
-  fullText: string | null;
-  segments: Array<{
-    startSeconds: number;
-    endSeconds: number;
-    text: string;
-  }>;
+  queueJobId: string;
+  queued: string;
+  status: 'queued';
 } {
   return {
-    transcriptionId: result.transcriptionId,
     sourceId: result.sourceId,
-    status: result.status,
-    provider: result.provider,
-    attempt: result.attempt,
-    language: result.language,
-    fullText: result.fullText,
-    segments: result.segments,
+    queueJobId: result.queueJobId,
+    queued: result.jobName,
+    status: 'queued',
   };
 }

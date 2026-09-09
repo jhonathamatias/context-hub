@@ -1,4 +1,4 @@
-import { copyFile, mkdir, mkdtemp, rename, rm } from 'node:fs/promises';
+import { access, copyFile, mkdir, mkdtemp, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { FastifyBaseLogger } from 'fastify';
 import { Service } from 'typedi';
@@ -21,6 +21,7 @@ import {
   SourceStatus,
 } from '../database';
 import { withProcessingLog } from '../observability';
+import { ProcessingStateService } from '../processing';
 import { FfmpegVideoProcessor } from './ffmpeg-video-processor';
 import {
   VideoValidationError,
@@ -35,78 +36,150 @@ export type IngestVideoInput = LocalUploadInput & {
   logger: FastifyBaseLogger;
 };
 
-export type IngestVideoResult = {
+/** Fast HTTP accept — file on disk, extract deferred to worker. */
+export type AcceptIngestResult = {
   sourceId: string;
   jobId: string;
   connectorKind: string;
   originalName: string;
-  storageKey: string;
-  audioPath: string;
   status: SourceStatus;
-  metadata: VideoMetadata;
+  queuedJob: 'video.extract';
+};
+
+export type ExtractAudioResult = {
+  sourceId: string;
+  jobId: string;
+  status: SourceStatus;
+  skipped: boolean;
+  metadata: VideoMetadata | null;
 };
 
 @Service()
 export class SourceIngestService {
   constructor(
     private readonly database: DatabaseService,
+    private readonly state: ProcessingStateService,
     private readonly videoProcessor: FfmpegVideoProcessor,
     private readonly localUploadConnector: LocalUploadVideoConnector,
     private readonly localFilesystemConnector: LocalFilesystemVideoConnector,
   ) {}
 
-  /** HTTP multipart upload — goes through the local-upload connector. */
-  async ingest(input: IngestVideoInput): Promise<IngestVideoResult> {
-    const [item] = await this.localUploadConnector.collect(
-      {
-        filename: input.filename,
-        mimetype: input.mimetype,
-        fileStream: input.fileStream,
-      },
-      { logger: input.logger },
+  async acceptUpload(input: IngestVideoInput): Promise<AcceptIngestResult> {
+    const item = await this.collectOne(
+      () =>
+        this.localUploadConnector.collect(
+          {
+            filename: input.filename,
+            mimetype: input.mimetype,
+            fileStream: input.fileStream,
+          },
+          { logger: input.logger },
+        ),
+      'Upload connector returned no items',
     );
-
-    if (!item) {
-      throw new Error('Upload connector returned no items');
-    }
-
-    return this.ingestCollected(item, input.logger);
+    return this.acceptCollected(item, input.logger);
   }
 
-  /** Absolute path on the API host — goes through the filesystem connector. */
-  async ingestFromFilesystem(
+  async acceptFromFilesystem(
     input: LocalFilesystemInput,
     logger: FastifyBaseLogger,
-  ): Promise<IngestVideoResult> {
-    const [item] = await this.localFilesystemConnector.collect(input, {
-      logger,
-    });
-
-    if (!item) {
-      throw new Error('Filesystem connector returned no items');
-    }
-
-    return this.ingestCollected(item, logger);
+  ): Promise<AcceptIngestResult> {
+    const item = await this.collectOne(
+      () => this.localFilesystemConnector.collect(input, { logger }),
+      'Filesystem connector returned no items',
+    );
+    return this.acceptCollected(item, logger);
   }
 
-  /**
-   * Central pipeline entry: any connector that yields a collected video item
-   * can call this without changing ingest/extract logic.
-   */
-  async ingestCollected(
+  /** Persist collected video + INGEST job. ffmpeg runs in `extractAudio`. */
+  async acceptCollected(
     item: CollectedSourceItem,
     logger: FastifyBaseLogger,
-  ): Promise<IngestVideoResult> {
-    const extension = normalizeExtension(item.originalName);
+  ): Promise<AcceptIngestResult> {
+    const extension = this.requireExtension(item.originalName);
+    const source = await this.createSourceShell(item, extension);
+    const ingestJob = await this.state.createJob(
+      source.id,
+      ProcessingStage.INGEST,
+      ProcessingJobStatus.RUNNING,
+    );
+
+    try {
+      await this.persistOriginalFile(item, source);
+      await this.state.markSucceeded(ingestJob);
+
+      const extractJob = await this.state.createJob(
+        source.id,
+        ProcessingStage.EXTRACT_AUDIO,
+        ProcessingJobStatus.PENDING,
+      );
+      await this.state.setSourceStatus(source, SourceStatus.PROCESSING);
+
+      logger.info(
+        { sourceId: source.id, jobId: extractJob.id },
+        'Source accepted; video.extract pending',
+      );
+
+      return {
+        sourceId: source.id,
+        jobId: extractJob.id,
+        connectorKind: item.connectorKind,
+        originalName: source.originalName,
+        status: source.status,
+        queuedJob: 'video.extract',
+      };
+    } catch (error) {
+      await this.state.setSourceStatus(source, SourceStatus.FAILED);
+      await this.state.markFailed(ingestJob, error);
+      throw error;
+    } finally {
+      await this.cleanupEphemeral(item);
+    }
+  }
+
+  /** Worker entry — idempotent when audio.wav already exists. */
+  async extractAudio(
+    sourceId: string,
+    logger: FastifyBaseLogger,
+  ): Promise<ExtractAudioResult> {
+    const source = await this.requireSource(sourceId);
+    const paths = this.sourcePaths(source);
+    const extractJob = await this.resolveExtractJob(sourceId);
+
+    if (await this.pathExists(paths.audio)) {
+      return this.skipExtractBecauseAudioExists(source, extractJob);
+    }
+
+    const job = await this.claimExtractJob(sourceId, extractJob);
+    return this.runFfmpegExtract(source, job, paths, logger);
+  }
+
+  private async collectOne(
+    collect: () => Promise<CollectedSourceItem[]>,
+    emptyMessage: string,
+  ): Promise<CollectedSourceItem> {
+    const [item] = await collect();
+    if (!item) {
+      throw new Error(emptyMessage);
+    }
+    return item;
+  }
+
+  private requireExtension(originalName: string): string {
+    const extension = normalizeExtension(originalName);
     if (!ALLOWED_EXTENSIONS.includes(extension)) {
       throw new VideoValidationError(
         `Unsupported video format ".${extension}". Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`,
       );
     }
+    return extension;
+  }
 
+  private async createSourceShell(
+    item: CollectedSourceItem,
+    extension: string,
+  ): Promise<Source> {
     const sourceRepo = this.database.getRepository(Source);
-    const jobRepo = this.database.getRepository(ProcessingJob);
-
     const source = sourceRepo.create({
       type: item.sourceType,
       originalName: item.originalName,
@@ -114,112 +187,160 @@ export class SourceIngestService {
       status: SourceStatus.PENDING,
     });
     await sourceRepo.save(source);
-
-    const sourceDir = join(env.storageDir, 'sources', source.id);
     source.storageKey = join('sources', source.id, `original.${extension}`);
     await sourceRepo.save(source);
+    return source;
+  }
 
+  private async persistOriginalFile(
+    item: CollectedSourceItem,
+    source: Source,
+  ): Promise<void> {
+    const sourceDir = join(env.storageDir, 'sources', source.id);
     const originalPath = join(env.storageDir, source.storageKey);
-
-    const ingestJob = jobRepo.create({
-      sourceId: source.id,
-      stage: ProcessingStage.INGEST,
-      status: ProcessingJobStatus.RUNNING,
-      startedAt: new Date(),
-      errorMessage: null,
-      finishedAt: null,
+    await mkdir(sourceDir, { recursive: true });
+    await copyFile(item.contentPath, originalPath);
+    await assertVideoFile(originalPath, item.originalName, {
+      maxBytes: env.maxUploadBytes,
+      allowedExtensions: ALLOWED_EXTENSIONS,
     });
-    await jobRepo.save(ingestJob);
+  }
 
-    const workDir = await mkdtemp(join(env.tempDir, 'ingest-'));
+  private async cleanupEphemeral(item: CollectedSourceItem): Promise<void> {
+    if (!item.ephemeral) {
+      return;
+    }
+    await rm(dirname(item.contentPath), { recursive: true, force: true });
+  }
+
+  private async requireSource(sourceId: string): Promise<Source> {
+    const source = await this.database.getRepository(Source).findOne({
+      where: { id: sourceId },
+    });
+    if (!source) {
+      const error = new Error(`Source not found: ${sourceId}`);
+      (error as Error & { statusCode?: number }).statusCode = 404;
+      throw error;
+    }
+    return source;
+  }
+
+  private sourcePaths(source: Source): {
+    dir: string;
+    audio: string;
+    original: string;
+  } {
+    const dir = join(env.storageDir, 'sources', source.id);
+    return {
+      dir,
+      audio: join(dir, 'audio.wav'),
+      original: join(env.storageDir, source.storageKey),
+    };
+  }
+
+  private async pathExists(path: string): Promise<boolean> {
+    try {
+      await access(path);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async resolveExtractJob(
+    sourceId: string,
+  ): Promise<ProcessingJob | null> {
+    return this.database.getRepository(ProcessingJob).findOne({
+      where: {
+        sourceId,
+        stage: ProcessingStage.EXTRACT_AUDIO,
+        status: ProcessingJobStatus.PENDING,
+      },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  private async skipExtractBecauseAudioExists(
+    source: Source,
+    extractJob: ProcessingJob | null,
+  ): Promise<ExtractAudioResult> {
+    let job = extractJob;
+    if (!job) {
+      job = await this.database.getRepository(ProcessingJob).findOne({
+        where: { sourceId: source.id, stage: ProcessingStage.EXTRACT_AUDIO },
+        order: { createdAt: 'DESC' },
+      });
+    }
+
+    if (job && job.status !== ProcessingJobStatus.SUCCEEDED) {
+      await this.state.markSucceeded(job);
+    }
+    await this.state.setSourceStatus(source, SourceStatus.READY);
+
+    return {
+      sourceId: source.id,
+      jobId: job?.id ?? source.id,
+      status: source.status,
+      skipped: true,
+      metadata: null,
+    };
+  }
+
+  private async claimExtractJob(
+    sourceId: string,
+    existing: ProcessingJob | null,
+  ): Promise<ProcessingJob> {
+    const job =
+      existing ??
+      (await this.state.createJob(
+        sourceId,
+        ProcessingStage.EXTRACT_AUDIO,
+        ProcessingJobStatus.PENDING,
+      ));
+    await this.state.markRunning(job);
+    return job;
+  }
+
+  private async runFfmpegExtract(
+    source: Source,
+    extractJob: ProcessingJob,
+    paths: { dir: string; audio: string; original: string },
+    logger: FastifyBaseLogger,
+  ): Promise<ExtractAudioResult> {
+    await this.state.setSourceStatus(source, SourceStatus.PROCESSING);
+    const workDir = await mkdtemp(join(env.tempDir, 'extract-'));
 
     try {
-      await mkdir(sourceDir, { recursive: true });
-      await copyFile(item.contentPath, originalPath);
-
-      await assertVideoFile(originalPath, item.originalName, {
-        maxBytes: env.maxUploadBytes,
-        allowedExtensions: ALLOWED_EXTENSIONS,
-      });
-
-      ingestJob.status = ProcessingJobStatus.SUCCEEDED;
-      ingestJob.finishedAt = new Date();
-      await jobRepo.save(ingestJob);
-
-      const extractJob = jobRepo.create({
-        sourceId: source.id,
-        stage: ProcessingStage.EXTRACT_AUDIO,
-        status: ProcessingJobStatus.RUNNING,
-        startedAt: new Date(),
-        errorMessage: null,
-        finishedAt: null,
-      });
-      await jobRepo.save(extractJob);
-
-      source.status = SourceStatus.PROCESSING;
-      await sourceRepo.save(source);
-
       const processed = await withProcessingLog(
         logger,
         ProcessingStage.EXTRACT_AUDIO,
-        {
-          sourceId: source.id,
-          originalName: source.originalName,
-          connectorKind: item.connectorKind,
-        },
+        { sourceId: source.id, originalName: source.originalName },
         async () =>
-          this.videoProcessor.process(originalPath, workDir, {
+          this.videoProcessor.process(paths.original, workDir, {
             maxBytes: env.maxUploadBytes,
             allowedExtensions: ALLOWED_EXTENSIONS,
           }),
       );
 
-      const audioDestination = join(sourceDir, 'audio.wav');
-      await rename(processed.audioPath, audioDestination);
+      await mkdir(paths.dir, { recursive: true });
+      await rename(processed.audioPath, paths.audio);
 
-      extractJob.status = ProcessingJobStatus.SUCCEEDED;
-      extractJob.finishedAt = new Date();
-      await jobRepo.save(extractJob);
-
-      source.status = SourceStatus.READY;
-      await sourceRepo.save(source);
+      await this.state.markSucceeded(extractJob);
+      await this.state.setSourceStatus(source, SourceStatus.READY);
 
       return {
         sourceId: source.id,
         jobId: extractJob.id,
-        connectorKind: item.connectorKind,
-        originalName: source.originalName,
-        storageKey: source.storageKey,
-        audioPath: join('sources', source.id, 'audio.wav'),
         status: source.status,
+        skipped: false,
         metadata: processed.metadata,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-
-      source.status = SourceStatus.FAILED;
-      await sourceRepo.save(source);
-
-      const runningJobs = await jobRepo.find({
-        where: {
-          sourceId: source.id,
-          status: ProcessingJobStatus.RUNNING,
-        },
-      });
-
-      for (const job of runningJobs) {
-        job.status = ProcessingJobStatus.FAILED;
-        job.errorMessage = message;
-        job.finishedAt = new Date();
-        await jobRepo.save(job);
-      }
-
+      await this.state.markFailed(extractJob, error);
+      await this.state.setSourceStatus(source, SourceStatus.FAILED);
       throw error;
     } finally {
       await rm(workDir, { recursive: true, force: true });
-      if (item.ephemeral) {
-        await rm(dirname(item.contentPath), { recursive: true, force: true });
-      }
     }
   }
 }

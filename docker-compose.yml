@@ -31,6 +31,33 @@ services:
       redis:
         condition: service_healthy
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: context-hub-worker
+    working_dir: /app
+    command: ["pnpm", "dev:worker"]
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - api_db_ignore:/app/db
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - NODE_LOG_LEVEL=${NODE_LOG_LEVEL:-info}
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    networks:
+      - context-hub
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   db:
     # pgvector-enabled Postgres (same major as before: 16)
     image: pgvector/pgvector:pg16

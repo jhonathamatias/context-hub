@@ -11,8 +11,9 @@ export { FfmpegVideoProcessor } from './ffmpeg-video-processor';
 export {
   SourceIngestService,
   getAllowedVideoExtensions,
+  type AcceptIngestResult,
+  type ExtractAudioResult,
   type IngestVideoInput,
-  type IngestVideoResult,
 } from './source-ingest.service';
 export {
   VideoValidationError,

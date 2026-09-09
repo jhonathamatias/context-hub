@@ -67,6 +67,32 @@ export class TranscriptionService {
       throw error;
     }
 
+    const existingCompleted = await transcriptionRepo.findOne({
+      where: {
+        sourceId: source.id,
+        status: TranscriptionStatus.COMPLETED,
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (existingCompleted) {
+      logger.info(
+        { sourceId, transcriptionId: existingCompleted.id },
+        'Transcription already completed; skipping re-run',
+      );
+      return {
+        transcriptionId: existingCompleted.id,
+        sourceId: source.id,
+        status: existingCompleted.status,
+        provider: existingCompleted.provider,
+        attempt: existingCompleted.attempt,
+        language: existingCompleted.language,
+        fullText: existingCompleted.fullText,
+        segments: existingCompleted.segmentsJson ?? [],
+        rawPath: existingCompleted.rawPath,
+        structuredPath: existingCompleted.structuredPath,
+      };
+    }
+
     const previousAttempts = await transcriptionRepo.count({
       where: { sourceId: source.id },
     });

@@ -1,6 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Service } from 'typedi';
-import { EmbeddingService } from '../embeddings';
 import {
   getBody,
   getParams,
@@ -9,23 +8,20 @@ import {
   type ListSourcesQuery,
   type SourceIdParams,
 } from '../http';
-import { KnowledgeService } from '../knowledge';
+import { JobQueueService } from '../jobs';
 import {
   SourceQueryService,
-  toPublicIngestResult,
-  toPublicTranscribeResult,
+  toPublicAcceptResult,
+  toPublicQueuedResult,
 } from '../sources';
-import { TranscriptionService } from '../transcription';
 import { SourceIngestService } from '../video';
 
 @Service()
 export class SourcesController {
   constructor(
     private readonly ingestService: SourceIngestService,
-    private readonly transcriptionService: TranscriptionService,
-    private readonly knowledgeService: KnowledgeService,
-    private readonly embeddingService: EmbeddingService,
     private readonly sourceQuery: SourceQueryService,
+    private readonly jobs: JobQueueService,
   ) {}
 
   async upload(request: FastifyRequest, reply: FastifyReply) {
@@ -41,14 +37,16 @@ export class SourcesController {
     }
 
     try {
-      const result = await this.ingestService.ingest({
+      const accepted = await this.ingestService.acceptUpload({
         filename: data.filename,
         mimetype: data.mimetype,
         fileStream: data.file,
         logger: request.log,
       });
 
-      return reply.status(201).send(toPublicIngestResult(result));
+      await this.jobs.enqueueVideoExtract(accepted.sourceId);
+
+      return reply.status(202).send(toPublicAcceptResult(accepted));
     } catch (error) {
       data.file.resume();
       throw error;
@@ -57,12 +55,14 @@ export class SourcesController {
 
   async fromFilesystem(request: FastifyRequest, reply: FastifyReply) {
     const body = getBody<IngestFilesystemBody>(request);
-    const result = await this.ingestService.ingestFromFilesystem(
+    const accepted = await this.ingestService.acceptFromFilesystem(
       { path: body.path },
       request.log,
     );
 
-    return reply.status(201).send(toPublicIngestResult(result));
+    await this.jobs.enqueueVideoExtract(accepted.sourceId);
+
+    return reply.status(202).send(toPublicAcceptResult(accepted));
   }
 
   async list(request: FastifyRequest, reply: FastifyReply) {
@@ -95,32 +95,22 @@ export class SourcesController {
 
   async transcribe(request: FastifyRequest, reply: FastifyReply) {
     const { sourceId } = getParams<SourceIdParams>(request);
-    const result = await this.transcriptionService.transcribeSource(
-      sourceId,
-      request.log,
-    );
-
-    return reply.status(201).send(toPublicTranscribeResult(result));
+    await this.sourceQuery.getById(sourceId);
+    const queued = await this.jobs.enqueueTranscription(sourceId);
+    return reply.status(202).send(toPublicQueuedResult(queued));
   }
 
   async knowledge(request: FastifyRequest, reply: FastifyReply) {
     const { sourceId } = getParams<SourceIdParams>(request);
-    const result = await this.knowledgeService.processSource(
-      sourceId,
-      request.log,
-    );
-
-    const statusCode = result.knowledgeStatus === 'FAILED' ? 207 : 201;
-    return reply.status(statusCode).send(result);
+    await this.sourceQuery.getById(sourceId);
+    const queued = await this.jobs.enqueueKnowledge(sourceId);
+    return reply.status(202).send(toPublicQueuedResult(queued));
   }
 
   async embeddings(request: FastifyRequest, reply: FastifyReply) {
     const { sourceId } = getParams<SourceIdParams>(request);
-    const result = await this.embeddingService.processSource(
-      sourceId,
-      request.log,
-    );
-
-    return reply.status(201).send(result);
+    await this.sourceQuery.getById(sourceId);
+    const queued = await this.jobs.enqueueEmbeddings(sourceId);
+    return reply.status(202).send(toPublicQueuedResult(queued));
   }
 }

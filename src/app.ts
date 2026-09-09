@@ -6,6 +6,8 @@ import Fastify from 'fastify';
 import { Container } from 'typedi';
 import { env } from './config/env';
 import { DatabaseService } from './database';
+import { registerDomainProviders } from './di';
+import { JobQueueService } from './jobs';
 import {
   buildLoggerOptions,
   generateRequestId,
@@ -15,29 +17,6 @@ import { RedisService } from './redis';
 import { healthRoute } from './routes/health.route';
 import { searchRoute } from './routes/search.route';
 import { sourcesRoute } from './routes/sources.route';
-import {
-  LocalWhisperTranscriptionProvider,
-  TRANSCRIPTION_PROVIDER,
-} from './transcription';
-import {
-  EMBEDDING_PROVIDER,
-  GeminiEmbeddingProvider,
-  OpenAiEmbeddingProvider,
-} from './embeddings';
-import {
-  KNOWLEDGE_EXTRACTION_PROVIDER,
-  LlmKnowledgeExtractionProvider,
-} from './knowledge';
-import { PgVectorRepository, VECTOR_REPOSITORY } from './search';
-import {
-  ANSWER_GENERATION_PROVIDER,
-  LlmAnswerGenerationProvider,
-} from './context';
-import {
-  GeminiLlmProvider,
-  LLM_PROVIDER,
-  OpenAiLlmProvider,
-} from './llm';
 
 export async function buildApp() {
   const app = Fastify({
@@ -80,53 +59,11 @@ export async function buildApp() {
     },
   });
 
-  // Vendor SDKs stay behind LlmProvider / EmbeddingProvider ports.
-  Container.set(
-    TRANSCRIPTION_PROVIDER,
-    Container.get(LocalWhisperTranscriptionProvider),
-  );
-  Container.set(
-    LLM_PROVIDER,
-    env.llm.provider === 'gemini'
-      ? Container.get(GeminiLlmProvider)
-      : Container.get(OpenAiLlmProvider),
-  );
-  Container.set(
-    KNOWLEDGE_EXTRACTION_PROVIDER,
-    Container.get(LlmKnowledgeExtractionProvider),
-  );
-  Container.set(
-    EMBEDDING_PROVIDER,
-    env.embedding.provider === 'gemini'
-      ? Container.get(GeminiEmbeddingProvider)
-      : Container.get(OpenAiEmbeddingProvider),
-  );
-  Container.set(VECTOR_REPOSITORY, Container.get(PgVectorRepository));
-  Container.set(
-    ANSWER_GENERATION_PROVIDER,
-    Container.get(LlmAnswerGenerationProvider),
-  );
-  app.log.info(
-    {
-      llmProvider: env.llm.provider,
-      llmTimeoutMs: env.llm.timeoutMs,
-      llmMaxRetries: env.llm.maxRetries,
-    },
-    'LLM provider selected',
-  );
-  app.log.info(
-    {
-      embeddingProvider: env.embedding.provider,
-      embeddingModel:
-        env.embedding.provider === 'gemini'
-          ? env.embedding.geminiModel
-          : env.embedding.openaiModel,
-    },
-    'Embedding provider selected',
-  );
+  registerDomainProviders(app.log);
 
   const database = Container.get(DatabaseService);
   const redis = Container.get(RedisService);
+  const jobs = Container.get(JobQueueService);
 
   app.addHook('onReady', async () => {
     try {
@@ -147,6 +84,13 @@ export async function buildApp() {
   });
 
   app.addHook('onClose', async () => {
+    try {
+      await jobs.close();
+      app.log.info('Job queues closed');
+    } catch (error) {
+      app.log.error(error, 'Failed to close job queues cleanly');
+    }
+
     try {
       await redis.disconnect();
       app.log.info('Redis disconnected');

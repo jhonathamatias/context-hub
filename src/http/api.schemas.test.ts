@@ -1,16 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { SourceStatus, TranscriptionStatus } from '../database/enums';
+import { SourceStatus } from '../database/enums';
 import {
   chatBodySchema,
   listSourcesQuerySchema,
   parseInput,
   ValidationError,
 } from '../http';
-import {
-  toPublicIngestResult,
-  toPublicTranscribeResult,
-} from '../sources/public-dto';
+import { JobName } from '../jobs/types';
+import { toPublicAcceptResult, toPublicQueuedResult } from '../sources/public-dto';
 
 describe('listSourcesQuerySchema', () => {
   it('applies pagination defaults', () => {
@@ -51,24 +49,17 @@ describe('chatBodySchema', () => {
 });
 
 describe('public DTOs', () => {
-  it('omits filesystem paths from ingest responses', () => {
-    const publicResult = toPublicIngestResult({
+  it('omits filesystem paths from accept responses', () => {
+    const publicResult = toPublicAcceptResult({
       sourceId: 's1',
       jobId: 'j1',
       connectorKind: 'local-upload',
       originalName: 'aula.mp4',
-      status: SourceStatus.READY,
-      metadata: {
-        durationSeconds: 10,
-        formatName: 'mp4',
-        sizeBytes: 100,
-        video: null,
-        audio: null,
-        streams: [{ index: 0, codecType: 'video', codecName: 'h264' }],
-      },
+      status: SourceStatus.PROCESSING,
+      queuedJob: 'video.extract',
     });
 
-    assert.equal(publicResult.metadata.streamCount, 1);
+    assert.equal(publicResult.queued, 'video.extract');
     assert.equal(
       Object.prototype.hasOwnProperty.call(publicResult, 'storageKey'),
       false,
@@ -79,22 +70,13 @@ describe('public DTOs', () => {
     );
   });
 
-  it('omits transcript artifact paths', () => {
-    const publicResult = toPublicTranscribeResult({
-      transcriptionId: 't1',
+  it('exposes queued pipeline jobs without internal paths', () => {
+    const publicResult = toPublicQueuedResult({
       sourceId: 's1',
-      status: TranscriptionStatus.COMPLETED,
-      provider: 'whisper',
-      attempt: 1,
-      language: 'pt',
-      fullText: 'hello',
-      segments: [],
+      queueJobId: 'q1',
+      jobName: JobName.TranscriptionRun,
     });
-
-    assert.equal(publicResult.fullText, 'hello');
-    assert.equal(
-      Object.prototype.hasOwnProperty.call(publicResult, 'rawPath'),
-      false,
-    );
+    assert.equal(publicResult.status, 'queued');
+    assert.equal(publicResult.queued, JobName.TranscriptionRun);
   });
 });

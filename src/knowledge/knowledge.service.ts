@@ -74,6 +74,37 @@ export class KnowledgeService {
       throw error;
     }
 
+    const existingKnowledge = await knowledgeRepo.findOne({
+      where: {
+        transcriptionId: transcription.id,
+        status: KnowledgeExtractionStatus.COMPLETED,
+      },
+      order: { createdAt: 'DESC' },
+    });
+    const existingChunkCount = await chunkRepo.count({
+      where: { transcriptionId: transcription.id },
+    });
+    if (existingKnowledge && existingChunkCount > 0) {
+      logger.info(
+        {
+          sourceId,
+          knowledgeExtractionId: existingKnowledge.id,
+          chunkCount: existingChunkCount,
+        },
+        'Knowledge already extracted; skipping re-run',
+      );
+      return {
+        sourceId,
+        transcriptionId: transcription.id,
+        chunkCount: existingChunkCount,
+        knowledgeExtractionId: existingKnowledge.id,
+        knowledgeStatus: existingKnowledge.status,
+        suggestedTitle: existingKnowledge.suggestedTitle,
+        summary: existingKnowledge.summary,
+        knowledge: existingKnowledge.payloadJson,
+      };
+    }
+
     const segments = transcription.segmentsJson as TranscriptionSegment[];
 
     source.status = SourceStatus.PROCESSING;

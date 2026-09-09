@@ -6,6 +6,6 @@ export {
   type SourceTranscriptResult,
 } from './source-query.service';
 export {
-  toPublicIngestResult,
-  toPublicTranscribeResult,
+  toPublicAcceptResult,
+  toPublicQueuedResult,
 } from './public-dto';

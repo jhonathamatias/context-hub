@@ -68,6 +68,10 @@ const rawEnvSchema = z.object({
     .default('gemini-embedding-001'),
   EMBEDDING_DIMENSION: z.coerce.number().int().positive().optional(),
   EMBEDDING_BATCH_SIZE: z.coerce.number().int().positive().default(32),
+
+  JOB_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  JOB_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  JOB_LOCK_DURATION_MS: z.coerce.number().int().positive().default(300_000),
 });
 
 export type AppEnv = {
@@ -109,6 +113,11 @@ export type AppEnv = {
     geminiModel: string;
     dimension?: number;
     batchSize: number;
+  };
+  jobs: {
+    attempts: number;
+    concurrency: number;
+    lockDurationMs: number;
   };
 };
 
@@ -251,6 +260,11 @@ export function loadEnv(
     },
     knowledgeProvider: raw.KNOWLEDGE_PROVIDER,
     embedding,
+    jobs: {
+      attempts: raw.JOB_ATTEMPTS,
+      concurrency: raw.JOB_CONCURRENCY,
+      lockDurationMs: raw.JOB_LOCK_DURATION_MS,
+    },
   };
 }
 
