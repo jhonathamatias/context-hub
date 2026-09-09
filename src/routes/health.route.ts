@@ -11,6 +11,7 @@ export async function healthRoute(app: FastifyInstance) {
     return reply.status(result.statusCode).send({
       status: result.status,
       database: result.database,
+      redis: result.redis,
     });
   });
 }

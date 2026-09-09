@@ -27,6 +27,7 @@
   "homepage": "https://github.com/jhonathamatias/context-hub#readme",
   "dependencies": {
     "fastify": "^5.12.3",
+    "ioredis": "^5.11.1",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
     "typedi": "^0.10.0",
