@@ -9,6 +9,10 @@ export async function sourcesRoute(app: FastifyInstance) {
     controller.upload(request, reply),
   );
 
+  app.post('/sources/from-filesystem', (request, reply) =>
+    controller.fromFilesystem(request, reply),
+  );
+
   app.post('/sources/:sourceId/transcribe', (request, reply) =>
     controller.transcribe(request, reply),
   );

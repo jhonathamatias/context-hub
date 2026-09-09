@@ -1,7 +1,11 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Service } from 'typedi';
 import { EmbeddingService } from '../embeddings';
-import { parseInput, sourceIdParamsSchema } from '../http';
+import {
+  ingestFilesystemBodySchema,
+  parseInput,
+  sourceIdParamsSchema,
+} from '../http';
 import { KnowledgeService } from '../knowledge';
 import { TranscriptionService } from '../transcription';
 import { SourceIngestService } from '../video';
@@ -40,6 +44,17 @@ export class SourcesController {
       data.file.resume();
       throw error;
     }
+  }
+
+  async fromFilesystem(request: FastifyRequest, reply: FastifyReply) {
+    const body = parseInput(ingestFilesystemBodySchema, request.body ?? {});
+
+    const result = await this.ingestService.ingestFromFilesystem(
+      { path: body.path },
+      request.log,
+    );
+
+    return reply.status(201).send(result);
   }
 
   async transcribe(request: FastifyRequest, reply: FastifyReply) {

@@ -1,10 +1,16 @@
-import { createWriteStream } from 'node:fs';
-import { mkdir, mkdtemp, rename, rm } from 'node:fs/promises';
-import { basename, join } from 'node:path';
-import { pipeline } from 'node:stream/promises';
-import type { Readable } from 'node:stream';
+import { copyFile, mkdir, mkdtemp, rename, rm } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import type { FastifyBaseLogger } from 'fastify';
 import { Service } from 'typedi';
+import type {
+  CollectedSourceItem,
+  LocalFilesystemInput,
+  LocalUploadInput,
+} from '../connectors';
+import {
+  LocalFilesystemVideoConnector,
+  LocalUploadVideoConnector,
+} from '../connectors';
 import { env } from '../config/env';
 import {
   DatabaseService,
@@ -13,7 +19,6 @@ import {
   ProcessingStage,
   Source,
   SourceStatus,
-  SourceType,
 } from '../database';
 import { withProcessingLog } from '../observability';
 import { FfmpegVideoProcessor } from './ffmpeg-video-processor';
@@ -26,16 +31,14 @@ import type { VideoMetadata } from './types';
 
 const ALLOWED_EXTENSIONS = ['mp4', 'mov', 'webm', 'mkv'];
 
-export type IngestVideoInput = {
-  filename: string;
-  mimetype: string;
-  fileStream: Readable;
+export type IngestVideoInput = LocalUploadInput & {
   logger: FastifyBaseLogger;
 };
 
 export type IngestVideoResult = {
   sourceId: string;
   jobId: string;
+  connectorKind: string;
   originalName: string;
   storageKey: string;
   audioPath: string;
@@ -48,10 +51,53 @@ export class SourceIngestService {
   constructor(
     private readonly database: DatabaseService,
     private readonly videoProcessor: FfmpegVideoProcessor,
+    private readonly localUploadConnector: LocalUploadVideoConnector,
+    private readonly localFilesystemConnector: LocalFilesystemVideoConnector,
   ) {}
 
+  /** HTTP multipart upload — goes through the local-upload connector. */
   async ingest(input: IngestVideoInput): Promise<IngestVideoResult> {
-    const extension = normalizeExtension(input.filename);
+    const [item] = await this.localUploadConnector.collect(
+      {
+        filename: input.filename,
+        mimetype: input.mimetype,
+        fileStream: input.fileStream,
+      },
+      { logger: input.logger },
+    );
+
+    if (!item) {
+      throw new Error('Upload connector returned no items');
+    }
+
+    return this.ingestCollected(item, input.logger);
+  }
+
+  /** Absolute path on the API host — goes through the filesystem connector. */
+  async ingestFromFilesystem(
+    input: LocalFilesystemInput,
+    logger: FastifyBaseLogger,
+  ): Promise<IngestVideoResult> {
+    const [item] = await this.localFilesystemConnector.collect(input, {
+      logger,
+    });
+
+    if (!item) {
+      throw new Error('Filesystem connector returned no items');
+    }
+
+    return this.ingestCollected(item, logger);
+  }
+
+  /**
+   * Central pipeline entry: any connector that yields a collected video item
+   * can call this without changing ingest/extract logic.
+   */
+  async ingestCollected(
+    item: CollectedSourceItem,
+    logger: FastifyBaseLogger,
+  ): Promise<IngestVideoResult> {
+    const extension = normalizeExtension(item.originalName);
     if (!ALLOWED_EXTENSIONS.includes(extension)) {
       throw new VideoValidationError(
         `Unsupported video format ".${extension}". Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`,
@@ -62,8 +108,8 @@ export class SourceIngestService {
     const jobRepo = this.database.getRepository(ProcessingJob);
 
     const source = sourceRepo.create({
-      type: SourceType.VIDEO,
-      originalName: basename(input.filename),
+      type: item.sourceType,
+      originalName: item.originalName,
       storageKey: 'pending',
       status: SourceStatus.PENDING,
     });
@@ -89,9 +135,9 @@ export class SourceIngestService {
 
     try {
       await mkdir(sourceDir, { recursive: true });
-      await pipeline(input.fileStream, createWriteStream(originalPath));
+      await copyFile(item.contentPath, originalPath);
 
-      await assertVideoFile(originalPath, input.filename, {
+      await assertVideoFile(originalPath, item.originalName, {
         maxBytes: env.maxUploadBytes,
         allowedExtensions: ALLOWED_EXTENSIONS,
       });
@@ -114,11 +160,12 @@ export class SourceIngestService {
       await sourceRepo.save(source);
 
       const processed = await withProcessingLog(
-        input.logger,
+        logger,
         ProcessingStage.EXTRACT_AUDIO,
         {
           sourceId: source.id,
           originalName: source.originalName,
+          connectorKind: item.connectorKind,
         },
         async () =>
           this.videoProcessor.process(originalPath, workDir, {
@@ -140,6 +187,7 @@ export class SourceIngestService {
       return {
         sourceId: source.id,
         jobId: extractJob.id,
+        connectorKind: item.connectorKind,
         originalName: source.originalName,
         storageKey: source.storageKey,
         audioPath: join('sources', source.id, 'audio.wav'),
@@ -169,6 +217,9 @@ export class SourceIngestService {
       throw error;
     } finally {
       await rm(workDir, { recursive: true, force: true });
+      if (item.ephemeral) {
+        await rm(dirname(item.contentPath), { recursive: true, force: true });
+      }
     }
   }
 }
