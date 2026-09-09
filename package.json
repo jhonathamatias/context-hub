@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "tsx src/server.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/**/*.test.ts",
     "migration:run": "NODE_OPTIONS='--import tsx' typeorm migration:run -d src/database/data-source.ts",
     "migration:revert": "NODE_OPTIONS='--import tsx' typeorm migration:revert -d src/database/data-source.ts",
     "migration:show": "NODE_OPTIONS='--import tsx' typeorm migration:show -d src/database/data-source.ts",
@@ -26,6 +27,7 @@
   },
   "homepage": "https://github.com/jhonathamatias/context-hub#readme",
   "dependencies": {
+    "@fastify/multipart": "^10.1.1",
     "fastify": "^5.12.3",
     "ioredis": "^5.11.1",
     "pg": "^8.23.0",

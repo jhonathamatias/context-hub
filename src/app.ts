@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import multipart from '@fastify/multipart';
 import Fastify from 'fastify';
 import { Container } from 'typedi';
 import { env } from './config/env';
@@ -10,6 +11,7 @@ import {
 } from './observability';
 import { RedisService } from './redis';
 import { healthRoute } from './routes/health.route';
+import { sourcesRoute } from './routes/sources.route';
 
 export async function buildApp() {
   const app = Fastify({
@@ -25,6 +27,13 @@ export async function buildApp() {
   });
 
   registerErrorHandler(app);
+
+  await app.register(multipart, {
+    limits: {
+      files: 1,
+      fileSize: env.maxUploadBytes,
+    },
+  });
 
   const database = Container.get(DatabaseService);
   const redis = Container.get(RedisService);
@@ -64,6 +73,7 @@ export async function buildApp() {
   });
 
   await app.register(healthRoute);
+  await app.register(sourcesRoute);
 
   return app;
 }

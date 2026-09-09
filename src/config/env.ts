@@ -30,6 +30,11 @@ const rawEnvSchema = z.object({
 
   STORAGE_DIR: z.string().min(1).default('./storage'),
   TEMP_DIR: z.string().min(1).default('./tmp'),
+  MAX_UPLOAD_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(100 * 1024 * 1024),
 
   OPENAI_API_KEY: optionalNonEmptyString,
   OPENAI_BASE_URL: optionalNonEmptyString,
@@ -45,6 +50,7 @@ export type AppEnv = {
   redisUrl: string;
   storageDir: string;
   tempDir: string;
+  maxUploadBytes: number;
   openai: {
     apiKey?: string;
     baseUrl?: string;
@@ -152,6 +158,7 @@ export function loadEnv(
     redisUrl: buildRedisUrl(raw),
     storageDir,
     tempDir,
+    maxUploadBytes: raw.MAX_UPLOAD_BYTES,
     openai,
   };
 }
