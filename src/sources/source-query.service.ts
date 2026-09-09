@@ -75,6 +75,17 @@ export type SourceTranscriptResult = {
   updatedAt: string;
 };
 
+export type SourceKnowledgeResult = {
+  sourceId: string;
+  knowledgeExtractionId: string;
+  status: string;
+  suggestedTitle: string | null;
+  summary: string | null;
+  knowledge: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
@@ -207,6 +218,34 @@ export class SourceQueryService {
       attempt: transcription.attempt,
       createdAt: transcription.createdAt.toISOString(),
       updatedAt: transcription.updatedAt.toISOString(),
+    };
+  }
+
+  async getKnowledge(sourceId: string): Promise<SourceKnowledgeResult> {
+    await this.requireSource(sourceId);
+
+    const knowledge = await this.database
+      .getRepository(KnowledgeExtraction)
+      .findOne({
+        where: { sourceId },
+        order: { createdAt: 'DESC' },
+      });
+
+    if (!knowledge) {
+      const error = new Error('Knowledge extraction not found for source');
+      (error as Error & { statusCode?: number }).statusCode = 404;
+      throw error;
+    }
+
+    return {
+      sourceId,
+      knowledgeExtractionId: knowledge.id,
+      status: knowledge.status,
+      suggestedTitle: knowledge.suggestedTitle,
+      summary: knowledge.summary,
+      knowledge: knowledge.payloadJson,
+      createdAt: knowledge.createdAt.toISOString(),
+      updatedAt: knowledge.updatedAt.toISOString(),
     };
   }
 

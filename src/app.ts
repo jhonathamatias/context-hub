@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
@@ -32,6 +33,10 @@ export async function buildApp() {
   });
 
   registerErrorHandler(app);
+
+  await app.register(cors, {
+    origin: true,
+  });
 
   await app.register(swagger, {
     openapi: {

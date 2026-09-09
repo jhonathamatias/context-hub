@@ -1,5 +1,6 @@
 export {
   SourceQueryService,
+  type SourceKnowledgeResult,
   type SourceListResult,
   type SourceStatusResult,
   type SourceSummary,

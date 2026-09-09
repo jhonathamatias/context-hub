@@ -100,6 +100,18 @@ export async function sourcesRoute(app: FastifyInstance) {
     (request, reply) => controller.getTranscript(request, reply),
   );
 
+  app.get(
+    '/sources/:sourceId/knowledge',
+    {
+      ...sourceIdValidation,
+      schema: {
+        ...sourceIdValidation.schema,
+        summary: 'Get extracted lesson knowledge for a source',
+      },
+    },
+    (request, reply) => controller.getKnowledge(request, reply),
+  );
+
   app.post(
     '/sources/:sourceId/transcribe',
     {
@@ -122,7 +134,7 @@ export async function sourcesRoute(app: FastifyInstance) {
         response: { 400: errorResponseSchema },
       },
     },
-    (request, reply) => controller.knowledge(request, reply),
+    (request, reply) => controller.enqueueKnowledge(request, reply),
   );
 
   app.post(

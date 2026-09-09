@@ -93,6 +93,12 @@ export class SourcesController {
     return reply.status(200).send(result);
   }
 
+  async getKnowledge(request: FastifyRequest, reply: FastifyReply) {
+    const { sourceId } = getParams<SourceIdParams>(request);
+    const result = await this.sourceQuery.getKnowledge(sourceId);
+    return reply.status(200).send(result);
+  }
+
   async transcribe(request: FastifyRequest, reply: FastifyReply) {
     const { sourceId } = getParams<SourceIdParams>(request);
     await this.sourceQuery.getById(sourceId);
@@ -100,7 +106,7 @@ export class SourcesController {
     return reply.status(202).send(toPublicQueuedResult(queued));
   }
 
-  async knowledge(request: FastifyRequest, reply: FastifyReply) {
+  async enqueueKnowledge(request: FastifyRequest, reply: FastifyReply) {
     const { sourceId } = getParams<SourceIdParams>(request);
     await this.sourceQuery.getById(sourceId);
     const queued = await this.jobs.enqueueKnowledge(sourceId);
