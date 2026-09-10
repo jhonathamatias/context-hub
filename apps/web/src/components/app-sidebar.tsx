@@ -3,7 +3,7 @@ import {
   Home,
   Library,
   Search,
-  MessageCircleQuestion,
+  Sparkles,
   Settings,
   Plus,
 } from 'lucide-react';
@@ -12,7 +12,7 @@ const items = [
   { to: '/', label: 'Início', icon: Home, exact: true },
   { to: '/biblioteca', label: 'Biblioteca', icon: Library, exact: false },
   { to: '/buscar', label: 'Buscar', icon: Search, exact: false },
-  { to: '/perguntar', label: 'Perguntar', icon: MessageCircleQuestion, exact: false },
+  { to: '/perguntar', label: 'Usar IA', icon: Sparkles, exact: false },
 ] as const;
 
 const linkBase =

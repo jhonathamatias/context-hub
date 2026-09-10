@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Search, ArrowRight } from 'lucide-react';
+import { Search, ArrowRight, Sparkles } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { LessonCard } from '@/components/lesson-card';
@@ -81,7 +81,8 @@ function HomePage() {
             to="/perguntar"
             className="inline-flex items-center gap-1.5 font-medium text-primary"
           >
-            Perguntar às aulas <ArrowRight className="size-3.5" />
+            <Sparkles className="size-3.5" />
+            Usar IA nas aulas <ArrowRight className="size-3.5" />
           </Link>
           <Link
             to="/importar"

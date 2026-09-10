@@ -5,6 +5,9 @@ import tailwindcss from '@tailwindcss/vite';
 import tsconfigPaths from 'vite-tsconfig-paths';
 
 export default defineConfig({
+  // Keep Vite cache outside node_modules — survives Docker/root installs
+  // that leave apps/web/node_modules owned by another uid.
+  cacheDir: '.vite',
   server: {
     host: '127.0.0.1',
     port: 5173,

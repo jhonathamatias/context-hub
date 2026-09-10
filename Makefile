@@ -17,7 +17,15 @@ infra: ## Sobe só db + redis
 down: ## Para e remove containers (mantém ./db)
 	$(COMPOSE) down
 
-front: ## Sobe o frontend (Vite em :5173)
+front: ## Sobe o frontend (Vite)
+	@mkdir -p apps/web/.vite
+	@# Se node_modules ficou root/nobody (install via Docker), corrige dono
+	@if [ -d apps/web/node_modules ] && [ ! -w apps/web/node_modules ]; then \
+	  echo "Corrigindo permissões de apps/web/node_modules…"; \
+	  docker run --rm -v "$(CURDIR):/app" alpine:3.20 \
+	    chown -R $$(id -u):$$(id -g) /app/apps/web/node_modules /app/apps/web/.vite /app/node_modules 2>/dev/null \
+	    || echo "Não foi possível corrigir permissões automaticamente. Rode: sudo chown -R \$$(whoami) apps/web/node_modules node_modules"; \
+	fi
 	pnpm --filter @context-hub/web dev
 
 api: ## Sobe/reinicia API + worker

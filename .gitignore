@@ -9,3 +9,5 @@ coverage/
 *.tsbuildinfo
 storage/
 tmp/
+apps/web/.vite/
+apps/web/.tanstack/

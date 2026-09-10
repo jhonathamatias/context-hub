@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
-import { SendHorizontal } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { api, type ChatAnswer } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { formatTimestamp } from "@/lib/format";
@@ -15,15 +15,17 @@ export const Route = createFileRoute("/perguntar")({
     typeof search["aula"] === "string" && search["aula"] ? { aula: search["aula"] } : {},
   head: () => ({
     meta: [
-      { title: "Pergunte às suas aulas — Context Hub" },
+      { title: "Usar IA — Context Hub" },
       {
         name: "description",
-        content: "Faça uma pergunta e receba a resposta com as aulas de origem.",
+        content:
+          "Pergunte em linguagem natural e receba respostas com as aulas de origem.",
       },
-      { property: "og:title", content: "Pergunte às suas aulas — Context Hub" },
+      { property: "og:title", content: "Usar IA — Context Hub" },
       {
         property: "og:description",
-        content: "Faça uma pergunta e receba a resposta com as aulas de origem.",
+        content:
+          "Pergunte em linguagem natural e receba respostas com as aulas de origem.",
       },
     ],
   }),
@@ -43,12 +45,19 @@ function AskPage() {
 
   return (
     <PageFrame width={PageFrameWidth.Lg}>
-      <h1 className="display-title text-2xl sm:text-3xl">Pergunte às suas aulas</h1>
-      <p className="mt-0.5 text-sm text-muted-foreground">
-        {aula
-          ? "Respondo usando somente esta aula."
-          : "Faça uma pergunta e eu procuro a resposta no conteúdo que você estudou."}
-      </p>
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary">
+          <Sparkles className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <h1 className="display-title text-2xl sm:text-3xl">Usar IA</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {aula
+              ? "Pergunte em linguagem natural — a IA responde só com o conteúdo desta aula e cita os trechos."
+              : "Pergunte em linguagem natural — a IA busca no que você já estudou e mostra as aulas de origem."}
+          </p>
+        </div>
+      </div>
 
       <form
         onSubmit={(e) => {
@@ -68,9 +77,13 @@ function AskPage() {
             className="w-full resize-none bg-transparent px-1 text-base outline-none placeholder:text-muted-foreground"
           />
           <div className="flex justify-end">
-            <Button type="submit" size="sm" disabled={ask.isPending || !question.trim()}>
-              {ask.isPending ? "Procurando…" : "Perguntar"}
-              <SendHorizontal className="size-4" />
+            <Button
+              type="submit"
+              size="sm"
+              disabled={ask.isPending || !question.trim()}
+            >
+              <Sparkles className="size-3.5" />
+              {ask.isPending ? "Pensando…" : "Perguntar à IA"}
             </Button>
           </div>
         </div>
@@ -79,7 +92,7 @@ function AskPage() {
       <div className="mt-4">
         {ask.isPending ? (
           <p className="animate-pulse text-sm text-muted-foreground">
-            Procurando nas suas aulas…
+            A IA está procurando nas suas aulas…
           </p>
         ) : ask.isError ? (
           <SoftError message="Não consegui responder agora. Tente novamente em instantes." />
@@ -136,8 +149,8 @@ function AskPage() {
           </article>
         ) : (
           <EmptyState
-            title="Pergunte como você falaria com seu professor"
-            description="“Como estudar pentatônica?”, “onde ele falou de target notes?” — respondo citando as aulas."
+            title="Pergunte como falaria com um professor"
+            description="A IA responde com base nas suas aulas e aponta os trechos certos — por exemplo: “como estudar pentatônica?” ou “onde ele falou de target notes?”."
           />
         )}
       </div>

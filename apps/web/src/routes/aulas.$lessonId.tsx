@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, MessageCircleQuestion } from "lucide-react";
+import { ArrowLeft, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { groupTranscriptSegments } from "@/lib/group-transcript-segments";
 import { Button } from "@/components/ui/button";
@@ -174,16 +174,16 @@ function LessonPage() {
         </div>
         {isProcessing ? (
           <Button className="shrink-0" disabled>
-            <MessageCircleQuestion className="size-4" />
+            <Sparkles className="size-4" />
             <span className="hidden sm:inline">Disponível em breve</span>
             <span className="sm:hidden">Aguarde</span>
           </Button>
         ) : (
           <Button asChild className="shrink-0">
             <Link to="/perguntar" search={{ aula: lessonId }}>
-              <MessageCircleQuestion className="size-4" />
-              <span className="hidden sm:inline">Perguntar sobre esta aula</span>
-              <span className="sm:hidden">Perguntar</span>
+              <Sparkles className="size-4" />
+              <span className="hidden sm:inline">Usar IA nesta aula</span>
+              <span className="sm:hidden">Usar IA</span>
             </Link>
           </Button>
         )}
@@ -248,6 +248,7 @@ function LessonPage() {
           <LessonPlayer
             ref={playerRef}
             videoUrl={data.videoUrl}
+            posterUrl={data.thumbnailUrl}
             onTimeUpdate={(seconds) => setCurrentTime(seconds)}
           />
 

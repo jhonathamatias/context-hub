@@ -164,3 +164,30 @@
   background-color: color-mix(in oklab, var(--color-primary) 75%, transparent);
   transition: width 0.45s ease-out;
 }
+
+/* Lesson player volume — thin native range, dark-friendly */
+.lesson-player__vol {
+  appearance: none;
+  height: 0.25rem;
+  border-radius: 999px;
+  background: oklch(1 0 0 / 0.22);
+  outline: none;
+  cursor: pointer;
+}
+
+.lesson-player__vol::-webkit-slider-thumb {
+  appearance: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: oklch(1 0 0);
+  border: 0;
+}
+
+.lesson-player__vol::-moz-range-thumb {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: oklch(1 0 0);
+  border: 0;
+}
