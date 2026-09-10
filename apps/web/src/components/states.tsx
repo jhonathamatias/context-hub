@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
 import {
   Check,
+  Download,
   FileAudio2,
   LoaderCircle,
   Search,
   Sparkles,
   Subtitles,
+  type LucideIcon,
 } from "lucide-react";
 import type { LessonPipeline } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -54,32 +56,17 @@ export function LoadingSkeleton({ rows = 4 }: { rows?: number }) {
 
 type Progress = NonNullable<LessonPipeline["progress"]>;
 
-const PIPELINE_STEPS = [
-  {
-    key: "EXTRACT_AUDIO",
-    label: "Áudio",
-    hint: "Separando o som do vídeo",
-    icon: FileAudio2,
-  },
-  {
-    key: "TRANSCRIBE",
-    label: "Transcrição",
-    hint: "Convertendo fala em texto",
-    icon: Subtitles,
-  },
-  {
-    key: "EXTRACT_KNOWLEDGE",
-    label: "Conhecimento",
-    hint: "Resumo e tópicos da aula",
-    icon: Sparkles,
-  },
-  {
-    key: "EMBED",
-    label: "Busca",
-    hint: "Indexando para perguntas",
-    icon: Search,
-  },
-] as const;
+const PIPELINE_STEPS: ReadonlyArray<{
+  key: string;
+  label: string;
+  icon: LucideIcon;
+}> = [
+  { key: "INGEST", label: "Baixando vídeo", icon: Download },
+  { key: "EXTRACT_AUDIO", label: "Extraindo áudio", icon: FileAudio2 },
+  { key: "TRANSCRIBE", label: "Gerando transcrição", icon: Subtitles },
+  { key: "EXTRACT_KNOWLEDGE", label: "Extraindo conhecimento", icon: Sparkles },
+  { key: "EMBED", label: "Indexando busca", icon: Search },
+];
 
 const STAGE_ORDER = [
   "INGEST",
@@ -105,36 +92,82 @@ function stepState(
     return stepKey === stage ? "active" : "todo";
   }
   if (currentIdx > stepIdx) return "done";
-  if (
-    currentIdx === stepIdx ||
-    (stage === "INGEST" && stepKey === "EXTRACT_AUDIO")
-  ) {
-    return "active";
-  }
+  if (currentIdx === stepIdx) return "active";
   return "todo";
 }
 
-/** Percent shown on each pipeline step card. */
-function stepPercent(
-  stepKey: string,
-  state: "done" | "active" | "todo",
+function secondaryDetail(
+  stage: string,
   progress: Progress | null | undefined,
-): number {
-  if (state === "done") return 100;
-  if (state === "todo") return 0;
-  if (stepKey === "TRANSCRIBE") {
-    return Math.round(progress?.transcriptionPercent ?? progress?.percent ?? 0);
+  detail: string | null,
+): string | null {
+  if (stage === "TRANSCRIBE" && progress?.transcriptionPercent != null) {
+    return `Transcrição ${Math.round(progress.transcriptionPercent)}%`;
   }
-  // Active non-transcribe stages: map overall band into 0–100 for the step.
-  const overall = progress?.percent ?? 0;
-  if (stepKey === "EXTRACT_AUDIO") return Math.min(100, Math.max(8, overall * 6));
-  if (stepKey === "EXTRACT_KNOWLEDGE") {
-    return overall >= 90 ? Math.min(100, (overall - 85) * 8) : 5;
+  if (stage === "INGEST" && progress?.ingestPercent != null) {
+    const base = `Download ${Math.round(progress.ingestPercent)}%`;
+    return detail ? `${base} · ${detail}` : base;
   }
-  if (stepKey === "EMBED") {
-    return overall >= 95 ? Math.min(100, (overall - 94) * 16) : 5;
-  }
-  return Math.round(overall);
+  return detail;
+}
+
+function PipelineSteps({
+  stage,
+  percent,
+  compact = false,
+}: {
+  stage: string;
+  percent: number;
+  compact?: boolean;
+}) {
+  return (
+    <ol className={cn("flex flex-wrap", compact ? "gap-1" : "gap-1.5")}>
+      {PIPELINE_STEPS.map((step) => {
+        const state = stepState(step.key, stage, percent);
+        const Icon = step.icon;
+        return (
+          <li
+            key={step.key}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-sm border",
+              compact ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-1 text-[11px]",
+              state === "done" &&
+                "border-border/80 bg-muted/30 text-muted-foreground",
+              state === "active" &&
+                "border-primary/30 bg-primary/10 text-foreground",
+              state === "todo" &&
+                "border-transparent text-muted-foreground/50",
+            )}
+          >
+            {state === "done" ? (
+              <Check
+                className={cn(
+                  "shrink-0 text-primary",
+                  compact ? "size-2.5" : "size-3",
+                )}
+                strokeWidth={2.5}
+              />
+            ) : state === "active" ? (
+              <LoaderCircle
+                className={cn(
+                  "shrink-0 animate-spin text-primary",
+                  compact ? "size-2.5" : "size-3",
+                )}
+              />
+            ) : (
+              <Icon
+                className={cn(
+                  "shrink-0 opacity-70",
+                  compact ? "size-2.5" : "size-3",
+                )}
+              />
+            )}
+            <span>{step.label}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 export function ProcessingIndicator({
@@ -149,38 +182,35 @@ export function ProcessingIndicator({
   const percent = Math.round(progress?.percent ?? 0);
   const stage = progress?.stage ?? "TRANSCRIBE";
   const label = progress?.label ?? "Preparando aula";
-  const detail =
-    progress?.detail ??
-    "Isso pode levar alguns minutos. Você pode sair e voltar depois.";
-  const transcriptionPercent =
-    progress?.transcriptionPercent != null
-      ? Math.round(progress.transcriptionPercent)
-      : null;
+  const detail = secondaryDetail(
+    stage,
+    progress,
+    progress?.detail ?? null,
+  );
 
   if (compact) {
     return (
-      <div className={cn("w-full max-w-sm", className)}>
+      <div className={cn("w-full max-w-md", className)}>
         <div className="flex items-center justify-between gap-3">
-          <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
-            <LoaderCircle className="size-3.5 shrink-0 animate-spin text-primary" />
-            <span className="truncate">{label}</span>
-          </span>
-          <span className="shrink-0 text-sm font-semibold tabular-nums text-primary">
+          <span className="truncate text-xs text-muted-foreground">{label}</span>
+          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
             {percent}%
           </span>
         </div>
-        <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
+        <div className="mt-1.5 h-0.5 overflow-hidden rounded-full bg-muted">
           <div
             className="processing-bar-fill h-full rounded-full"
-            style={{ width: `${Math.max(percent, 3)}%` }}
+            style={{ width: `${Math.max(percent, 2)}%` }}
           />
         </div>
-        {transcriptionPercent != null && stage === "TRANSCRIBE" ? (
-          <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">
-            Transcrição {transcriptionPercent}%
-            {detail ? ` · ${detail}` : ""}
+        {detail ? (
+          <p className="mt-1 truncate text-[10px] text-muted-foreground/80">
+            {detail}
           </p>
         ) : null}
+        <div className="mt-2">
+          <PipelineSteps stage={stage} percent={percent} compact />
+        </div>
       </div>
     );
   }
@@ -188,131 +218,34 @@ export function ProcessingIndicator({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-2xl border border-border bg-card",
+        "rounded-xl border border-border bg-card/60 px-4 py-3.5",
         className,
       )}
     >
-      <div className="border-b border-border bg-accent/30 px-5 py-5 sm:px-6">
-        <div className="flex items-end justify-between gap-4">
-          <div className="min-w-0">
-            <p className="flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-primary uppercase">
-              <LoaderCircle className="size-3.5 animate-spin" />
-              Em processamento
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm text-foreground">{label}</p>
+          {detail ? (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {detail}
             </p>
-            <h2 className="mt-1.5 text-lg font-semibold tracking-tight text-foreground sm:text-xl">
-              {label}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="text-4xl font-semibold tabular-nums tracking-tight text-primary sm:text-5xl">
-              {percent}
-              <span className="text-xl text-muted-foreground">%</span>
-            </p>
-            <p className="mt-0.5 text-xs font-medium text-muted-foreground">
-              progresso total
-            </p>
-          </div>
+          ) : null}
         </div>
-
-        <div className="mt-4 h-3 overflow-hidden rounded-full bg-muted">
-          <div
-            className="processing-bar-fill h-full rounded-full"
-            style={{ width: `${Math.max(percent, 3)}%` }}
-          />
-        </div>
-
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs tabular-nums text-muted-foreground">
-          <span>
-            {transcriptionPercent != null && stage === "TRANSCRIBE"
-              ? `Transcrição: ${transcriptionPercent}%`
-              : "Acompanhe cada etapa abaixo"}
-          </span>
-          <span className="font-semibold text-foreground">{percent}% / 100%</span>
-        </div>
+        <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+          {percent}%
+        </span>
       </div>
 
-      <ol className="grid gap-0 sm:grid-cols-4">
-        {PIPELINE_STEPS.map((step, index) => {
-          const state = stepState(step.key, stage, percent);
-          const pct = stepPercent(step.key, state, progress);
-          const Icon = step.icon;
-          return (
-            <li
-              key={step.key}
-              className={cn(
-                "relative px-4 py-4 sm:px-5",
-                index < PIPELINE_STEPS.length - 1
-                  ? "border-b border-border sm:border-r sm:border-b-0"
-                  : "",
-                state === "active" ? "bg-primary/5" : "",
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex min-w-0 items-start gap-3">
-                  <span
-                    className={cn(
-                      "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full border",
-                      state === "done" &&
-                        "border-primary/40 bg-primary text-primary-foreground",
-                      state === "active" &&
-                        "border-primary/50 bg-primary/15 text-primary",
-                      state === "todo" &&
-                        "border-border bg-muted/40 text-muted-foreground",
-                    )}
-                  >
-                    {state === "done" ? (
-                      <Check className="size-4" strokeWidth={2.5} />
-                    ) : state === "active" ? (
-                      <LoaderCircle className="size-4 animate-spin" />
-                    ) : (
-                      <Icon className="size-3.5 opacity-60" />
-                    )}
-                  </span>
-                  <div className="min-w-0">
-                    <p
-                      className={cn(
-                        "text-sm font-medium",
-                        state === "todo"
-                          ? "text-muted-foreground"
-                          : "text-foreground",
-                      )}
-                    >
-                      {step.label}
-                    </p>
-                    <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-                      {state === "active" ? step.hint : state === "done" ? "Concluído" : "Na fila"}
-                    </p>
-                  </div>
-                </div>
-                <span
-                  className={cn(
-                    "shrink-0 text-base font-semibold tabular-nums",
-                    state === "active" && "text-primary",
-                    state === "done" && "text-foreground",
-                    state === "todo" && "text-muted-foreground/70",
-                  )}
-                >
-                  {pct}%
-                </span>
-              </div>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
-                <div
-                  className={cn(
-                    "h-full rounded-full transition-[width] duration-500 ease-out",
-                    state === "active"
-                      ? "processing-bar-fill"
-                      : state === "done"
-                        ? "bg-primary"
-                        : "bg-transparent",
-                  )}
-                  style={{ width: `${Math.max(pct, state === "todo" ? 0 : 2)}%` }}
-                />
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+      <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-muted">
+        <div
+          className="processing-bar-fill h-full rounded-full"
+          style={{ width: `${Math.max(percent, 2)}%` }}
+        />
+      </div>
+
+      <div className="mt-3">
+        <PipelineSteps stage={stage} percent={percent} />
+      </div>
     </section>
   );
 }

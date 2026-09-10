@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as BibliotecaRouteImport } from './routes/biblioteca'
 import { Route as BuscarRouteImport } from './routes/buscar'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
+import { Route as ImportarRouteImport } from './routes/importar'
 import { Route as PerguntarRouteImport } from './routes/perguntar'
 import { Route as AulasLessonIdRouteImport } from './routes/aulas.$lessonId'
 import { Route as ConfiguracoesIndexRouteImport } from './routes/configuracoes.index'
@@ -36,6 +37,11 @@ const BuscarRoute = BuscarRouteImport.update({
 const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
   id: '/configuracoes',
   path: '/configuracoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImportarRoute = ImportarRouteImport.update({
+  id: '/importar',
+  path: '/importar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PerguntarRoute = PerguntarRouteImport.update({
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/biblioteca': typeof BibliotecaRoute
   '/buscar': typeof BuscarRoute
   '/configuracoes': typeof ConfiguracoesRouteWithChildren
+  '/importar': typeof ImportarRoute
   '/perguntar': typeof PerguntarRoute
   '/aulas/$lessonId': typeof AulasLessonIdRoute
   '/configuracoes/onedrive': typeof ConfiguracoesOnedriveRoute
@@ -73,6 +80,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/biblioteca': typeof BibliotecaRoute
   '/buscar': typeof BuscarRoute
+  '/importar': typeof ImportarRoute
   '/perguntar': typeof PerguntarRoute
   '/aulas/$lessonId': typeof AulasLessonIdRoute
   '/configuracoes/onedrive': typeof ConfiguracoesOnedriveRoute
@@ -84,6 +92,7 @@ export interface FileRoutesById {
   '/biblioteca': typeof BibliotecaRoute
   '/buscar': typeof BuscarRoute
   '/configuracoes': typeof ConfiguracoesRouteWithChildren
+  '/importar': typeof ImportarRoute
   '/perguntar': typeof PerguntarRoute
   '/aulas/$lessonId': typeof AulasLessonIdRoute
   '/configuracoes/onedrive': typeof ConfiguracoesOnedriveRoute
@@ -96,6 +105,7 @@ export interface FileRouteTypes {
     | '/biblioteca'
     | '/buscar'
     | '/configuracoes'
+    | '/importar'
     | '/perguntar'
     | '/aulas/$lessonId'
     | '/configuracoes/onedrive'
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
     | '/'
     | '/biblioteca'
     | '/buscar'
+    | '/importar'
     | '/perguntar'
     | '/aulas/$lessonId'
     | '/configuracoes/onedrive'
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
     | '/biblioteca'
     | '/buscar'
     | '/configuracoes'
+    | '/importar'
     | '/perguntar'
     | '/aulas/$lessonId'
     | '/configuracoes/onedrive'
@@ -126,6 +138,7 @@ export interface RootRouteChildren {
   BibliotecaRoute: typeof BibliotecaRoute
   BuscarRoute: typeof BuscarRoute
   ConfiguracoesRoute: typeof ConfiguracoesRouteWithChildren
+  ImportarRoute: typeof ImportarRoute
   PerguntarRoute: typeof PerguntarRoute
   AulasLessonIdRoute: typeof AulasLessonIdRoute
 }
@@ -158,6 +171,13 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes'
       fullPath: '/configuracoes'
       preLoaderRoute: typeof ConfiguracoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/importar': {
+      id: '/importar'
+      path: '/importar'
+      fullPath: '/importar'
+      preLoaderRoute: typeof ImportarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/perguntar': {
@@ -210,6 +230,7 @@ const rootRouteChildren: RootRouteChildren = {
   BibliotecaRoute: BibliotecaRoute,
   BuscarRoute: BuscarRoute,
   ConfiguracoesRoute: ConfiguracoesRouteWithChildren,
+  ImportarRoute: ImportarRoute,
   PerguntarRoute: PerguntarRoute,
   AulasLessonIdRoute: AulasLessonIdRoute,
 }

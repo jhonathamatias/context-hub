@@ -5,6 +5,8 @@ export { LocalUploadVideoConnector } from './local-upload.connector';
 export type {
   OneDriveInput,
   OneDriveListedVideo,
+  OneDrivePlaybackInfo,
+  OneDrivePlannedItem,
 } from './onedrive.connector';
 export { OneDriveVideoConnector } from './onedrive.connector';
 export { SourceConnectorRegistry } from './registry';

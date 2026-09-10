@@ -198,10 +198,17 @@ export function ownedItemApiPath(
 export async function graphGet<T>(
   client: Client,
   path: string,
-  options: { hasToken?: boolean; prefer?: string | false } = {},
+  options: {
+    hasToken?: boolean;
+    prefer?: string | false;
+    expand?: string;
+  } = {},
 ): Promise<T> {
   try {
     let request = client.api(path);
+    if (options.expand) {
+      request = request.expand(options.expand);
+    }
     if (options.prefer !== false) {
       request = request.header('Prefer', options.prefer ?? PREFER_REDEEM);
     }

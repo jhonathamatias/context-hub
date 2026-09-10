@@ -3,6 +3,7 @@ import { Service } from 'typedi';
 import { EmbeddingsGenerateJobHandler } from './handlers/embeddings-generate.handler';
 import { KnowledgeExtractJobHandler } from './handlers/knowledge-extract.handler';
 import { SourceIndexJobHandler } from './handlers/source-index.handler';
+import { SourceIngestJobHandler } from './handlers/source-ingest.handler';
 import { TranscriptionRunJobHandler } from './handlers/transcription-run.handler';
 import { VideoExtractJobHandler } from './handlers/video-extract.handler';
 import { JobQueueService } from './queue.service';
@@ -10,6 +11,7 @@ import type { SourceJobHandler } from './source-job-handler';
 import { JobName, type SourceJobPayload } from './types';
 
 const NEXT_JOB: Partial<Record<JobName, JobName>> = {
+  [JobName.SourceIngest]: JobName.VideoExtract,
   [JobName.VideoExtract]: JobName.TranscriptionRun,
   [JobName.TranscriptionRun]: JobName.KnowledgeExtract,
   [JobName.KnowledgeExtract]: JobName.EmbeddingsGenerate,
@@ -25,6 +27,7 @@ export class JobDispatcher {
   private readonly handlersByName: ReadonlyMap<JobName, SourceJobHandler>;
 
   constructor(
+    sourceIngest: SourceIngestJobHandler,
     videoExtract: VideoExtractJobHandler,
     transcriptionRun: TranscriptionRunJobHandler,
     knowledgeExtract: KnowledgeExtractJobHandler,
@@ -33,6 +36,7 @@ export class JobDispatcher {
     private readonly queue: JobQueueService,
   ) {
     const handlers: SourceJobHandler[] = [
+      sourceIngest,
       videoExtract,
       transcriptionRun,
       knowledgeExtract,

@@ -41,6 +41,7 @@ export type PipelineProgress = {
   label: string;
   detail: string | null;
   transcriptionPercent: number | null;
+  ingestPercent: number | null;
 };
 
 export type SourceStatusResult = {
@@ -146,6 +147,13 @@ type WhisperProgressFile = {
   status?: string;
 };
 
+type IngestProgressFile = {
+  percent?: number;
+  bytesReceived?: number;
+  bytesTotal?: number | null;
+  status?: string;
+};
+
 async function readWhisperProgress(
   transcriptionId: string,
 ): Promise<WhisperProgressFile | null> {
@@ -158,6 +166,24 @@ async function readWhisperProgress(
   }
 }
 
+async function readIngestProgress(
+  sourceId: string,
+): Promise<IngestProgressFile | null> {
+  const path = join(env.storageDir, 'sources', sourceId, 'ingest-progress.json');
+  try {
+    const raw = await readFile(path, 'utf8');
+    return JSON.parse(raw) as IngestProgressFile;
+  } catch {
+    return null;
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function buildPipelineProgress(input: {
   sourceStatus: SourceStatus;
   transcription: Transcription | null;
@@ -165,9 +191,17 @@ function buildPipelineProgress(input: {
   embeddingCount: number;
   latestJobs: ProcessingJob[];
   whisper: WhisperProgressFile | null;
+  ingest: IngestProgressFile | null;
 }): PipelineProgress {
-  const { sourceStatus, transcription, knowledge, embeddingCount, latestJobs, whisper } =
-    input;
+  const {
+    sourceStatus,
+    transcription,
+    knowledge,
+    embeddingCount,
+    latestJobs,
+    whisper,
+    ingest,
+  } = input;
 
   if (sourceStatus === SourceStatus.READY || embeddingCount > 0) {
     return {
@@ -176,6 +210,7 @@ function buildPipelineProgress(input: {
       label: 'Processado',
       detail: null,
       transcriptionPercent: 100,
+      ingestPercent: 100,
     };
   }
 
@@ -187,6 +222,7 @@ function buildPipelineProgress(input: {
       detail: latestJobs.find((j) => j.status === ProcessingJobStatus.FAILED)
         ?.errorMessage ?? null,
       transcriptionPercent: null,
+      ingestPercent: null,
     };
   }
 
@@ -196,6 +232,11 @@ function buildPipelineProgress(input: {
       .map((j) => j.stage),
   );
   const running = latestJobs.find((j) => j.status === ProcessingJobStatus.RUNNING);
+  const pendingExtract = latestJobs.find(
+    (j) =>
+      j.stage === ProcessingStage.EXTRACT_AUDIO &&
+      j.status === ProcessingJobStatus.PENDING,
+  );
 
   const ingestDone = succeeded.has(ProcessingStage.INGEST);
   const extractDone = succeeded.has(ProcessingStage.EXTRACT_AUDIO);
@@ -210,16 +251,45 @@ function buildPipelineProgress(input: {
   if (extractDone) base = 15;
 
   if (!extractDone) {
-    const stage = running?.stage ?? ProcessingStage.INGEST;
+    if (!ingestDone) {
+      const ingestPercent =
+        typeof ingest?.percent === 'number' ? ingest.percent : null;
+      const received = ingest?.bytesReceived;
+      const total = ingest?.bytesTotal;
+      const detail =
+        received != null && total != null && total > 0
+          ? `${formatBytes(received)} / ${formatBytes(total)}`
+          : received != null
+            ? `${formatBytes(received)} baixados`
+            : 'Baixando do OneDrive…';
+      const overall =
+        ingestPercent != null
+          ? Math.max(1, Math.min(99, Math.round(ingestPercent)))
+          : running?.stage === ProcessingStage.INGEST
+            ? 1
+            : 0;
+      return {
+        percent: overall,
+        stage: ProcessingStage.INGEST,
+        label: 'Importando vídeo',
+        detail,
+        transcriptionPercent: null,
+        ingestPercent: overall,
+      };
+    }
+
+    const extracting = running?.stage === ProcessingStage.EXTRACT_AUDIO;
     return {
-      percent: stage === ProcessingStage.EXTRACT_AUDIO ? 12 : 5,
-      stage,
-      label:
-        stage === ProcessingStage.EXTRACT_AUDIO
-          ? 'Extraindo áudio'
-          : 'Recebendo vídeo',
+      percent: extracting ? 12 : 8,
+      stage: ProcessingStage.EXTRACT_AUDIO,
+      label: extracting
+        ? 'Extraindo áudio'
+        : pendingExtract
+          ? 'Na fila · extraindo áudio'
+          : 'Preparando vídeo',
       detail: null,
       transcriptionPercent: null,
+      ingestPercent: 100,
     };
   }
 
@@ -243,6 +313,7 @@ function buildPipelineProgress(input: {
       label: 'Transcrevendo',
       detail,
       transcriptionPercent: whisperPercent,
+      ingestPercent: 100,
     };
   }
 
@@ -253,6 +324,7 @@ function buildPipelineProgress(input: {
       label: 'Extraindo conhecimento',
       detail: 'Gerando resumo e tópicos',
       transcriptionPercent: 100,
+      ingestPercent: 100,
     };
   }
 
@@ -262,6 +334,7 @@ function buildPipelineProgress(input: {
     label: 'Gerando embeddings',
     detail: 'Indexando para busca',
     transcriptionPercent: 100,
+    ingestPercent: 100,
   };
 }
 
@@ -361,6 +434,16 @@ export class SourceQueryService {
           ? { percent: 100 }
           : null;
 
+    const ingestSucceeded = latestJobs.some(
+      (j) =>
+        j.stage === ProcessingStage.INGEST &&
+        j.status === ProcessingJobStatus.SUCCEEDED,
+    );
+    const ingest =
+      !ingestSucceeded && source.status === SourceStatus.PROCESSING
+        ? await readIngestProgress(sourceId)
+        : null;
+
     const progress = buildPipelineProgress({
       sourceStatus: source.status,
       transcription,
@@ -368,6 +451,7 @@ export class SourceQueryService {
       embeddingCount,
       latestJobs,
       whisper,
+      ingest,
     });
 
     return {

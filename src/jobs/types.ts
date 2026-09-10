@@ -1,5 +1,6 @@
 /** Queue job names — payloads carry sourceId references only (no video bytes). */
 export const JobName = {
+  SourceIngest: 'source.ingest',
   VideoExtract: 'video.extract',
   TranscriptionRun: 'transcription.run',
   KnowledgeExtract: 'knowledge.extract',
@@ -14,6 +15,7 @@ export type SourceJobPayload = {
 };
 
 export const ALL_JOB_NAMES: JobName[] = [
+  JobName.SourceIngest,
   JobName.VideoExtract,
   JobName.TranscriptionRun,
   JobName.KnowledgeExtract,

@@ -11,5 +11,6 @@ export {
 export { EmbeddingsGenerateJobHandler } from './handlers/embeddings-generate.handler';
 export { KnowledgeExtractJobHandler } from './handlers/knowledge-extract.handler';
 export { SourceIndexJobHandler } from './handlers/source-index.handler';
+export { SourceIngestJobHandler } from './handlers/source-ingest.handler';
 export { TranscriptionRunJobHandler } from './handlers/transcription-run.handler';
 export { VideoExtractJobHandler } from './handlers/video-extract.handler';

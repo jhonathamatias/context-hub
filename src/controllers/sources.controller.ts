@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { createReadStream } from 'node:fs';
+import { Readable } from 'node:stream';
 import { Service } from 'typedi';
 import {
   getBody,
@@ -8,6 +9,7 @@ import {
   type IngestFilesystemBody,
   type IngestOneDriveBody,
   type ListSourcesQuery,
+  type OneDriveStreamQuery,
   type PreviewOneDriveBody,
   type SourceIdParams,
 } from '../http';
@@ -89,6 +91,75 @@ export class SourcesController {
     return reply.status(200).send({ items: videos });
   }
 
+  /** Proxy OneDrive bytes for in-browser preview (supports Range). */
+  async streamOneDrivePreview(request: FastifyRequest, reply: FastifyReply) {
+    const query = getQuery<OneDriveStreamQuery>(request);
+    const shareUrl = await this.integrations.resolveOneDriveShareUrl(
+      query.integrationId,
+      query.url,
+    );
+    const accessToken = await this.integrations.resolveOneDriveAccessToken(
+      query.integrationId,
+    );
+    const playback = await this.ingestService.resolveOneDrivePlayback({
+      shareUrl,
+      itemId: query.itemId,
+      ...(accessToken ? { accessToken } : {}),
+    });
+
+    const upstreamHeaders: Record<string, string> = {};
+    const range = request.headers.range;
+    if (typeof range === 'string' && range) {
+      upstreamHeaders.Range = range;
+    }
+
+    const upstream = await fetch(playback.downloadUrl, {
+      headers: upstreamHeaders,
+      redirect: 'follow',
+    });
+
+    if (!upstream.ok && upstream.status !== 206) {
+      return reply.status(upstream.status >= 400 ? upstream.status : 502).send({
+        statusCode: upstream.status,
+        error: 'Bad Gateway',
+        message: `OneDrive preview failed (${upstream.status})`,
+        requestId: request.id,
+      });
+    }
+
+    const contentType =
+      upstream.headers.get('content-type') ||
+      playback.mimeType ||
+      'video/mp4';
+    reply.type(contentType);
+    reply.header('Accept-Ranges', 'bytes');
+    reply.header(
+      'Content-Disposition',
+      `inline; filename="${playback.name.replace(/"/g, '')}"`,
+    );
+    reply.header('Cache-Control', 'private, max-age=60');
+
+    const contentLength = upstream.headers.get('content-length');
+    if (contentLength) {
+      reply.header('Content-Length', contentLength);
+    }
+    const contentRange = upstream.headers.get('content-range');
+    if (contentRange) {
+      reply.header('Content-Range', contentRange);
+    }
+
+    reply.status(upstream.status);
+    if (!upstream.body) {
+      return reply.send();
+    }
+
+    return reply.send(
+      Readable.fromWeb(
+        upstream.body as import('node:stream/web').ReadableStream,
+      ),
+    );
+  }
+
   async fromOneDrive(request: FastifyRequest, reply: FastifyReply) {
     const body = getBody<IngestOneDriveBody>(request);
     const shareUrl = await this.integrations.resolveOneDriveShareUrl(
@@ -103,6 +174,7 @@ export class SourcesController {
       ...(accessToken ? { accessToken } : {}),
       ...(body.itemId ? { itemId: body.itemId } : {}),
       ...(body.importAll !== undefined ? { importAll: body.importAll } : {}),
+      ...(body.originalName ? { originalName: body.originalName } : {}),
     };
     const accepted = await this.ingestService.acceptFromOneDrive(
       input,
@@ -110,7 +182,7 @@ export class SourcesController {
     );
 
     for (const item of accepted) {
-      await this.jobs.enqueueVideoExtract(item.sourceId);
+      await this.jobs.enqueueSourceIngest(item.sourceId);
     }
 
     return reply.status(202).send({

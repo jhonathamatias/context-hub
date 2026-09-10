@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, HardDriveUpload, Plus } from 'lucide-react';
+import { ChevronRight, Plus } from 'lucide-react';
 import { API_BASE_URL, api } from '@/lib/api';
 import { OneDriveIcon } from '@/components/onedrive-icon';
 import { PageFrame, PageFrameWidth } from '@/components/page-frame';
@@ -55,17 +55,10 @@ const CATALOG: CatalogItem[] = [
   {
     id: 'onedrive',
     name: 'OneDrive',
-    description: 'Configurar chave e importar vídeos por link',
+    description: 'Token Graph e link padrão da pasta',
     status: CatalogStatus.Available,
     icon: <OneDriveIcon className="size-5 text-[#28a8ea]" />,
     to: '/configuracoes/onedrive',
-  },
-  {
-    id: 'local-upload',
-    name: 'Upload local',
-    description: 'Enviar arquivos pelo navegador (biblioteca)',
-    status: CatalogStatus.Connected,
-    icon: <HardDriveUpload className="size-5 text-muted-foreground" />,
   },
 ];
 
@@ -82,7 +75,8 @@ function SettingsPage() {
     <PageFrame width={PageFrameWidth.Lg}>
       <h1 className="display-title text-2xl sm:text-3xl">Configurações</h1>
       <p className="mt-0.5 text-sm text-muted-foreground">
-        Preferências e fontes do studio.
+        Integrações e preferências do studio. Para trazer vídeos, use Importar
+        aula.
       </p>
 
       <h2 className="mt-5 text-xs font-semibold tracking-widest text-muted-foreground uppercase">
@@ -133,12 +127,18 @@ function SettingsPage() {
         </ul>
       )}
 
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
         <Link
           to="/configuracoes/onedrive"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
         >
           <Plus className="size-4" /> Nova integração OneDrive
+        </Link>
+        <Link
+          to="/importar"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        >
+          Ir para Importar aula →
         </Link>
       </div>
 

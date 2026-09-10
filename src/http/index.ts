@@ -18,11 +18,13 @@ export {
   ingestFilesystemBodySchema,
   ingestOneDriveBodySchema,
   listSourcesQuerySchema,
+  oneDriveStreamQuerySchema,
   previewOneDriveBodySchema,
   sourceIdParamsSchema,
   type IngestFilesystemBody,
   type IngestOneDriveBody,
   type ListSourcesQuery,
+  type OneDriveStreamQuery,
   type PreviewOneDriveBody,
   type SourceIdParams,
 } from './schemas/sources.schema';

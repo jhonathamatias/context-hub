@@ -23,6 +23,7 @@ export type LessonPipeline = {
     label: string;
     detail: string | null;
     transcriptionPercent: number | null;
+    ingestPercent: number | null;
   } | null;
 };
 
@@ -78,6 +79,7 @@ export type OneDriveListedVideo = {
   size: number | null;
   mimeType: string | null;
   webUrl: string | null;
+  thumbnailUrl: string | null;
 };
 
 export type IntegrationKind = 'ONEDRIVE';
@@ -281,6 +283,7 @@ function normalizeProgress(
   const percent = Number(p['percent']);
   if (!Number.isFinite(percent)) return null;
   const transcriptionPercent = Number(p['transcriptionPercent']);
+  const ingestPercent = Number(p['ingestPercent']);
   return {
     percent: Math.max(0, Math.min(100, Math.round(percent))),
     stage: String(p['stage'] ?? ''),
@@ -288,6 +291,9 @@ function normalizeProgress(
     detail: typeof p['detail'] === 'string' ? p['detail'] : null,
     transcriptionPercent: Number.isFinite(transcriptionPercent)
       ? Math.max(0, Math.min(100, Math.round(transcriptionPercent)))
+      : null,
+    ingestPercent: Number.isFinite(ingestPercent)
+      ? Math.max(0, Math.min(100, Math.round(ingestPercent)))
       : null,
   };
 }
@@ -496,8 +502,22 @@ export const api = {
         size: Number(pick<number>(o, ['size']) ?? 0) || null,
         mimeType: pick<string>(o, ['mimeType']) ?? null,
         webUrl: pick<string>(o, ['webUrl']) ?? null,
+        thumbnailUrl: pick<string>(o, ['thumbnailUrl', 'thumbnail']) ?? null,
       };
     });
+  },
+
+  /** Same-origin stream URL for OneDrive preview (proxied by the API). */
+  oneDriveStreamUrl: (input: {
+    url: string;
+    integrationId?: string;
+    itemId: string;
+  }): string => {
+    const params = new URLSearchParams();
+    params.set('url', input.url);
+    params.set('itemId', input.itemId);
+    if (input.integrationId) params.set('integrationId', input.integrationId);
+    return `${API_BASE_URL}/sources/onedrive/stream?${params.toString()}`;
   },
 
   importFromOneDrive: async (input: {
@@ -505,12 +525,14 @@ export const api = {
     integrationId?: string;
     itemId?: string;
     importAll?: boolean;
+    originalName?: string;
   }): Promise<{ count: number; sourceIds: string[] }> => {
     const body: Record<string, unknown> = {};
     if (input.url) body.url = input.url;
     if (input.integrationId) body.integrationId = input.integrationId;
     if (input.itemId) body.itemId = input.itemId;
     if (input.importAll) body.importAll = true;
+    if (input.originalName) body.originalName = input.originalName;
     const data = (await request<unknown>('/sources/onedrive', {
       method: 'POST',
       body: JSON.stringify(body),

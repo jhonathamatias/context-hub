@@ -5,6 +5,7 @@ import {
   ingestFilesystemBodySchema,
   ingestOneDriveBodySchema,
   listSourcesQuerySchema,
+  oneDriveStreamQuerySchema,
   previewOneDriveBodySchema,
   sourceIdParamsSchema,
   validateZod,
@@ -64,6 +65,19 @@ export async function sourcesRoute(app: FastifyInstance) {
       },
     },
     (request, reply) => controller.previewOneDrive(request, reply),
+  );
+
+  app.get(
+    '/sources/onedrive/stream',
+    {
+      preHandler: validateZod({ query: oneDriveStreamQuerySchema }),
+      schema: {
+        tags: ['sources'],
+        summary: 'Stream a OneDrive video for in-browser preview (Range supported)',
+        response: { 400: errorResponseSchema, 404: errorResponseSchema },
+      },
+    },
+    (request, reply) => controller.streamOneDrivePreview(request, reply),
   );
 
   app.post(

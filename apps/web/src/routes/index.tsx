@@ -5,7 +5,6 @@ import { Search, ArrowRight } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { LessonCard } from '@/components/lesson-card';
-import { AddLessonDialog } from '@/components/add-lesson-dialog';
 import { EmptyState, LoadingSkeleton } from '@/components/states';
 import { PageFrame, PageFrameWidth } from '@/components/page-frame';
 
@@ -84,16 +83,12 @@ function HomePage() {
           >
             Perguntar às aulas <ArrowRight className="size-3.5" />
           </Link>
-          <AddLessonDialog
-            trigger={
-              <button
-                type="button"
-                className="text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Adicionar aula
-              </button>
-            }
-          />
+          <Link
+            to="/importar"
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Adicionar aula
+          </Link>
         </div>
       </section>
 

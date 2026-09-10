@@ -7,21 +7,23 @@ import {
   ArrowLeft,
   BookOpen,
   ChevronDown,
-  Download,
   KeyRound,
   Link2,
   Plug,
   Trash2,
   Upload,
 } from 'lucide-react';
-import { ApiError, api, type OneDriveListedVideo } from '@/lib/api';
+import { api } from '@/lib/api';
+import {
+  feedbackFromError,
+  type ImportFeedback,
+} from '@/lib/import-feedback';
 import { zodResolver } from '@/lib/zod-resolver';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { OneDriveIcon } from '@/components/onedrive-icon';
 import { PageFrame, PageFrameWidth } from '@/components/page-frame';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Collapsible,
   CollapsibleContent,
@@ -36,27 +38,11 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import {
-  FeedbackAlert,
-  type FeedbackTone,
-} from '@/components/ui/alert';
+import { FeedbackAlert } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
-
-const OneDriveTab = {
-  Integration: 'integracao',
-  Import: 'importar',
-} as const;
-
-type OneDriveTab = (typeof OneDriveTab)[keyof typeof OneDriveTab];
 
 type SearchParams = {
   id?: string;
-  tab?: OneDriveTab;
-};
-
-const TAB_FROM_SEARCH: Record<string, OneDriveTab> = {
-  integracao: OneDriveTab.Integration,
-  importar: OneDriveTab.Import,
 };
 
 const integrationFormSchema = z.object({
@@ -77,16 +63,6 @@ const integrationFormSchema = z.object({
 
 type IntegrationFormValues = z.infer<typeof integrationFormSchema>;
 
-const importFormSchema = z.object({
-  shareUrl: z
-    .string()
-    .trim()
-    .min(1, 'Cole o link do arquivo ou pasta')
-    .refine((value) => URL.canParse(value), 'Informe um link válido (https://…)'),
-});
-
-type ImportFormValues = z.infer<typeof importFormSchema>;
-
 const TUTORIAL_STEPS = [
   {
     icon: Link2,
@@ -101,12 +77,12 @@ const TUTORIAL_STEPS = [
   {
     icon: Plug,
     title: 'Salve a integração aqui',
-    body: 'Dê um nome (ex.: “Aulas guitarra”), cole o token e, se quiser, o link padrão da pasta. Ao salvar, validamos se o token consegue ler arquivos no OneDrive. Você pode ter várias integrações.',
+    body: 'Dê um nome (ex.: “Aulas guitarra”), cole o token e, se quiser, o link padrão da pasta. Ao salvar, validamos se o token consegue ler arquivos no OneDrive.',
   },
   {
     icon: Upload,
-    title: 'Importe na aba Importar',
-    body: 'Selecione a integração salva, confirme o link e liste os vídeos. Importe um a um ou a pasta inteira — eles entram no pipeline do studio.',
+    title: 'Importe em Importar aula',
+    body: 'Com a integração salva, abra Importar aula, escolha o OneDrive na lista de origens e listar/importar os vídeos.',
   },
 ] as const;
 
@@ -116,12 +92,8 @@ export const Route = createFileRoute('/configuracoes/onedrive')({
       typeof search['id'] === 'string' && search['id']
         ? search['id']
         : undefined;
-    const rawTab =
-      typeof search['tab'] === 'string' ? search['tab'].toLowerCase() : '';
-    const tab = TAB_FROM_SEARCH[rawTab];
     return {
       ...(id ? { id } : {}),
-      ...(tab ? { tab } : {}),
     };
   },
   head: () => ({
@@ -129,88 +101,26 @@ export const Route = createFileRoute('/configuracoes/onedrive')({
       { title: 'OneDrive — Context Hub' },
       {
         name: 'description',
-        content: 'Configure token e importe vídeos do OneDrive.',
+        content: 'Configure a integração OneDrive / SharePoint.',
       },
       { property: 'og:title', content: 'OneDrive — Context Hub' },
       {
         property: 'og:description',
-        content: 'Configure token e importe vídeos do OneDrive.',
+        content: 'Configure a integração OneDrive / SharePoint.',
       },
     ],
   }),
   component: OneDriveIntegrationPage,
 });
 
-function errorMessage(err: unknown, fallback: string): string {
-  if (err instanceof ApiError) return err.message;
-  if (err instanceof Error && err.message) return err.message;
-  return fallback;
-}
-
-type Feedback = {
-  tone: FeedbackTone;
-  title: string;
-  message: string;
-};
-
-function feedbackFromError(err: unknown, fallbackTitle: string): Feedback {
-  const message = errorMessage(err, fallbackTitle);
-  const lower = message.toLowerCase();
-  if (
-    lower.includes('invalid url') ||
-    lower.includes('<html') ||
-    lower.includes('url inválida') ||
-    lower.includes('url invalida')
-  ) {
-    return {
-      tone: 'warning',
-      title: 'Link inválido para a API',
-      message,
-    };
-  }
-  if (
-    lower.includes('404') ||
-    lower.includes('não encontrado') ||
-    lower.includes('not found')
-  ) {
-    return {
-      tone: 'warning',
-      title: 'Link não encontrado',
-      message,
-    };
-  }
-  if (
-    lower.includes('401') ||
-    lower.includes('403') ||
-    lower.includes('files.read') ||
-    lower.includes('token') ||
-    lower.includes('acesso negado') ||
-    lower.includes('permissão') ||
-    lower.includes('read only')
-  ) {
-    return {
-      tone: 'destructive',
-      title: 'Sem permissão no OneDrive',
-      message,
-    };
-  }
-  return {
-    tone: 'destructive',
-    title: fallbackTitle,
-    message,
-  };
-}
-
 function OneDriveIntegrationPage() {
-  const { id: selectedId, tab: tabParam } = Route.useSearch();
+  const { id: selectedId } = Route.useSearch();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const activeTab = tabParam ?? OneDriveTab.Integration;
 
-  const [videos, setVideos] = useState<OneDriveListedVideo[]>([]);
-  const [configFeedback, setConfigFeedback] = useState<Feedback | null>(null);
-  const [importFeedback, setImportFeedback] = useState<Feedback | null>(null);
-  /** Session-only drafts — API never returns the raw token. */
+  const [configFeedback, setConfigFeedback] = useState<ImportFeedback | null>(
+    null,
+  );
   const tokenDraftsRef = useRef<Record<string, string>>({});
   const draftKey = selectedId ?? '__new__';
 
@@ -229,12 +139,6 @@ function OneDriveIntegrationPage() {
     mode: 'onTouched',
   });
 
-  const importForm = useForm<ImportFormValues>({
-    resolver: zodResolver(importFormSchema),
-    defaultValues: { shareUrl: '' },
-    mode: 'onTouched',
-  });
-
   useEffect(() => {
     return () => {
       tokenDraftsRef.current[draftKey] =
@@ -250,7 +154,6 @@ function OneDriveIntegrationPage() {
           accessToken: tokenDraftsRef.current['__new__'] ?? '',
           shareUrl: '',
         });
-        importForm.reset({ shareUrl: '' });
       }
       return;
     }
@@ -259,30 +162,16 @@ function OneDriveIntegrationPage() {
       accessToken: tokenDraftsRef.current[selected.id] ?? '',
       shareUrl: selected.shareUrl ?? '',
     });
-    importForm.reset({ shareUrl: selected.shareUrl ?? '' });
-  }, [selected, selectedId, integrationForm, importForm]);
-
-  const setTab = (tab: OneDriveTab) => {
-    void navigate({
-      to: '/configuracoes/onedrive',
-      search: {
-        ...(selectedId ? { id: selectedId } : {}),
-        tab,
-      },
-    });
-  };
+  }, [selected, selectedId, integrationForm]);
 
   const selectIntegration = (id?: string) => {
     tokenDraftsRef.current[draftKey] =
       integrationForm.getValues('accessToken') ?? '';
-    setVideos([]);
     setConfigFeedback(null);
-    setImportFeedback(null);
     void navigate({
       to: '/configuracoes/onedrive',
       search: {
         ...(id ? { id } : {}),
-        tab: activeTab,
       },
     });
   };
@@ -313,12 +202,12 @@ function OneDriveIntegrationPage() {
       setConfigFeedback({
         tone: 'success',
         title: 'Integração salva',
-        message: 'Você já pode ir para a aba Importar e listar os vídeos.',
+        message: 'Agora você pode importar vídeos em Importar aula.',
       });
       await queryClient.invalidateQueries({ queryKey: ['integrations'] });
       void navigate({
         to: '/configuracoes/onedrive',
-        search: { id: item.id, tab: OneDriveTab.Integration },
+        search: { id: item.id },
       });
     },
     onError: (err: unknown) => {
@@ -341,105 +230,18 @@ function OneDriveIntegrationPage() {
         message: 'Você pode criar outra integração quando quiser.',
       });
       await queryClient.invalidateQueries({ queryKey: ['integrations'] });
-      void navigate({
-        to: '/configuracoes/onedrive',
-        search: { tab: OneDriveTab.Integration },
-      });
+      void navigate({ to: '/configuracoes/onedrive', search: {} });
     },
     onError: (err: unknown) => {
       setConfigFeedback(feedbackFromError(err, 'Falha ao remover'));
     },
   });
 
-  const preview = useMutation({
-    mutationFn: (shareUrl: string) =>
-      api.previewOneDrive({
-        url: shareUrl,
-        integrationId: selectedId,
-      }),
-    onSuccess: (items) => {
-      setVideos(items);
-      if (items.length === 0) {
-        setImportFeedback({
-          tone: 'warning',
-          title: 'Nenhum vídeo neste link',
-          message:
-            'O link abriu, mas não há arquivos de vídeo suportados (mp4, mov, webm, mkv).',
-        });
-        return;
-      }
-      setImportFeedback({
-        tone: 'success',
-        title: `${items.length} vídeo(s) encontrado(s)`,
-        message: 'Importe um a um ou use “Importar pasta inteira”.',
-      });
-    },
-    onError: (err: unknown) => {
-      setVideos([]);
-      setImportFeedback(feedbackFromError(err, 'Falha ao listar OneDrive'));
-    },
-  });
-
-  const importOne = useMutation({
-    mutationFn: (input: { shareUrl: string; itemId?: string }) =>
-      api.importFromOneDrive({
-        url: input.shareUrl,
-        integrationId: selectedId,
-        ...(input.itemId ? { itemId: input.itemId } : {}),
-      }),
-    onSuccess: (result) => {
-      setImportFeedback({
-        tone: 'success',
-        title: 'Importação iniciada',
-        message: `${result.count} aula(s) enfileirada(s) para processamento.`,
-      });
-      void navigate({ to: '/biblioteca' });
-    },
-    onError: (err: unknown) => {
-      setImportFeedback(feedbackFromError(err, 'Falha ao importar'));
-    },
-  });
-
-  const importAll = useMutation({
-    mutationFn: (shareUrl: string) =>
-      api.importFromOneDrive({
-        url: shareUrl,
-        integrationId: selectedId,
-        importAll: true,
-      }),
-    onSuccess: (result) => {
-      setImportFeedback({
-        tone: 'success',
-        title: 'Importação iniciada',
-        message: `${result.count} aula(s) enfileirada(s) para processamento.`,
-      });
-      void navigate({ to: '/biblioteca' });
-    },
-    onError: (err: unknown) => {
-      setImportFeedback(feedbackFromError(err, 'Falha ao importar pasta'));
-    },
-  });
-
-  const busy =
-    save.isPending ||
-    remove.isPending ||
-    preview.isPending ||
-    importOne.isPending ||
-    importAll.isPending;
+  const busy = save.isPending || remove.isPending;
 
   const onSaveIntegration = integrationForm.handleSubmit((values) => {
     setConfigFeedback(null);
     save.mutate(values);
-  });
-
-  const onPreview = importForm.handleSubmit((values) => {
-    setImportFeedback(null);
-    preview.mutate(values.shareUrl);
-  });
-
-  const onImportAll = importForm.handleSubmit((values) => {
-    setImportFeedback(null);
-    importAll.mutate(values.shareUrl);
   });
 
   return (
@@ -458,7 +260,7 @@ function OneDriveIntegrationPage() {
         <div className="min-w-0">
           <h1 className="display-title text-2xl sm:text-3xl">OneDrive</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Configure a conexão e importe aulas direto do OneDrive / SharePoint.
+            Credenciais e link padrão — a importação fica em Importar aula.
           </p>
         </div>
       </header>
@@ -487,274 +289,125 @@ function OneDriveIntegrationPage() {
         </div>
       ) : null}
 
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => {
-          const next = TAB_FROM_SEARCH[value];
-          if (next) setTab(next);
-        }}
-        className="mt-5"
-      >
-        <TabsList className="h-10 w-full justify-start gap-1 rounded-none border-b border-border bg-transparent p-0">
-          <TabsTrigger
-            value={OneDriveTab.Integration}
-            className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+      <div className="mt-5 space-y-4">
+        <TutorialCard />
+
+        <Form {...integrationForm}>
+          <form
+            onSubmit={onSaveIntegration}
+            className="panel space-y-3 px-3 py-3"
+            noValidate
           >
-            <Plug className="size-4" />
-            Integração
-          </TabsTrigger>
-          <TabsTrigger
-            value={OneDriveTab.Import}
-            className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-          >
-            <Download className="size-4" />
-            Importar
-          </TabsTrigger>
-        </TabsList>
+            <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+              {selectedId ? 'Editar integração' : 'Nova integração'}
+            </h2>
 
-        <TabsContent value={OneDriveTab.Integration} className="mt-4 space-y-4">
-          <TutorialCard />
+            <FormField
+              control={integrationForm.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem className="space-y-1">
+                  <FormLabel className="text-xs text-muted-foreground">
+                    Nome
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Ex: Aulas guitarra / OneDrive pessoal"
+                      autoComplete="off"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <Form {...integrationForm}>
-            <form
-              onSubmit={onSaveIntegration}
-              className="panel space-y-3 px-3 py-3"
-              noValidate
-            >
-              <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
-                {selectedId ? 'Editar integração' : 'Nova integração'}
-              </h2>
+            <FormField
+              control={integrationForm.control}
+              name="accessToken"
+              render={({ field }) => (
+                <FormItem className="space-y-1">
+                  <FormLabel className="text-xs text-muted-foreground">
+                    Access token (Graph)
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Cole o access token do Microsoft Graph"
+                      autoComplete="off"
+                      spellCheck={false}
+                      rows={5}
+                      className="min-h-[7.5rem] resize-y font-mono text-xs leading-relaxed"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {selected?.hasAccessToken
+                      ? 'Já existe um token salvo — cole um novo só se quiser trocar (precisa de Files.Read no Graph Explorer).'
+                      : 'Para pastas privadas: Graph Explorer → Modify permissions → Files.Read + Files.Read.All → Consent. Links públicos podem omitir o token.'}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-              <FormField
-                control={integrationForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem className="space-y-1">
-                    <FormLabel className="text-xs text-muted-foreground">
-                      Nome
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="Ex: Aulas guitarra / OneDrive pessoal"
-                        autoComplete="off"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <FormField
+              control={integrationForm.control}
+              name="shareUrl"
+              render={({ field }) => (
+                <FormItem className="space-y-1">
+                  <FormLabel className="text-xs text-muted-foreground">
+                    Link padrão (opcional)
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type="url"
+                      placeholder="https://1drv.ms/… ou sharepoint.com/…"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-              <FormField
-                control={integrationForm.control}
-                name="accessToken"
-                render={({ field }) => (
-                  <FormItem className="space-y-1">
-                    <FormLabel className="text-xs text-muted-foreground">
-                      Access token (Graph)
-                    </FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Cole o access token do Microsoft Graph"
-                        autoComplete="off"
-                        spellCheck={false}
-                        rows={5}
-                        className="min-h-[7.5rem] resize-y font-mono text-xs leading-relaxed"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {selected?.hasAccessToken
-                        ? 'Já existe um token salvo — cole um novo só se quiser trocar (precisa de Files.Read no Graph Explorer).'
-                        : 'Para pastas privadas: Graph Explorer → Modify permissions → Files.Read + Files.Read.All → Consent. Links públicos podem omitir o token.'}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={integrationForm.control}
-                name="shareUrl"
-                render={({ field }) => (
-                  <FormItem className="space-y-1">
-                    <FormLabel className="text-xs text-muted-foreground">
-                      Link padrão (opcional)
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="url"
-                        placeholder="https://1drv.ms/… ou sharepoint.com/…"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="flex flex-wrap gap-2 pt-1">
-                <Button type="submit" disabled={busy}>
-                  {save.isPending ? 'Salvando…' : 'Salvar integração'}
-                </Button>
-                {selectedId ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => setTab(OneDriveTab.Import)}
-                  >
-                    Ir para Importar
-                  </Button>
-                ) : null}
-                {selectedId ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => remove.mutate()}
-                  >
-                    <Trash2 className="size-4" />
-                    Remover
-                  </Button>
-                ) : null}
-              </div>
-
-              {configFeedback ? (
-                <FeedbackAlert
-                  tone={configFeedback.tone}
-                  title={configFeedback.title}
-                >
-                  {configFeedback.message}
-                </FeedbackAlert>
-              ) : null}
-            </form>
-          </Form>
-        </TabsContent>
-
-        <TabsContent value={OneDriveTab.Import} className="mt-4 space-y-4">
-          {!selectedId && savedList.length === 0 ? (
-            <div className="panel px-4 py-6 text-center">
-              <BookOpen className="mx-auto size-8 text-muted-foreground" />
-              <p className="mt-3 text-sm font-medium">
-                Salve uma integração primeiro
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Vá na aba Integração, siga o tutorial e salve nome + token (ou
-                link público).
-              </p>
-              <Button
-                type="button"
-                className="mt-4"
-                onClick={() => setTab(OneDriveTab.Integration)}
-              >
-                Abrir Integração
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button type="submit" disabled={busy}>
+                {save.isPending ? 'Salvando…' : 'Salvar integração'}
               </Button>
+              {selectedId ? (
+                <Button asChild type="button" variant="outline" disabled={busy}>
+                  <Link
+                    to="/importar"
+                    search={{ fonte: 'onedrive', id: selectedId }}
+                  >
+                    Importar com esta integração
+                  </Link>
+                </Button>
+              ) : null}
+              {selectedId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => remove.mutate()}
+                >
+                  <Trash2 className="size-4" />
+                  Remover
+                </Button>
+              ) : null}
             </div>
-          ) : (
-            <Form {...importForm}>
-              <form className="panel space-y-3 px-3 py-3" noValidate>
-                <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
-                  Importar vídeos
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  {selected
-                    ? `Usando “${selected.name}”${selected.hasAccessToken ? ' (com token)' : ' (sem token)'}.`
-                    : 'Nenhuma integração selecionada — links públicos ainda funcionam se você colar a URL.'}
-                </p>
 
-                <FormField
-                  control={importForm.control}
-                  name="shareUrl"
-                  render={({ field }) => (
-                    <FormItem className="space-y-1">
-                      <FormLabel className="text-xs text-muted-foreground">
-                        Link do arquivo ou pasta
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="url"
-                          placeholder="https://1drv.ms/… ou sharepoint.com/…"
-                          {...field}
-                          onChange={(e) => {
-                            field.onChange(e);
-                            setImportFeedback(null);
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void onPreview()}
-                  >
-                    {preview.isPending ? 'Listando…' : 'Listar vídeos'}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void onImportAll()}
-                  >
-                    {importAll.isPending
-                      ? 'Importando…'
-                      : 'Importar pasta inteira'}
-                  </Button>
-                </div>
-
-                {importFeedback ? (
-                  <FeedbackAlert
-                    tone={importFeedback.tone}
-                    title={importFeedback.title}
-                  >
-                    {importFeedback.message}
-                  </FeedbackAlert>
-                ) : null}
-
-                {videos.length > 0 ? (
-                  <ul className="divide-y divide-border border border-border">
-                    {videos.map((video) => (
-                      <li
-                        key={video.id || video.name}
-                        className="flex items-center justify-between gap-3 px-3 py-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">
-                            {video.name}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatBytes(video.size)}
-                            {video.mimeType ? ` · ${video.mimeType}` : ''}
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          disabled={busy || !video.id}
-                          onClick={() => {
-                            const shareUrl = importForm.getValues('shareUrl');
-                            importOne.mutate({
-                              shareUrl,
-                              itemId: video.id,
-                            });
-                          }}
-                        >
-                          Importar
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </form>
-            </Form>
-          )}
-        </TabsContent>
-      </Tabs>
+            {configFeedback ? (
+              <FeedbackAlert
+                tone={configFeedback.tone}
+                title={configFeedback.title}
+              >
+                {configFeedback.message}
+              </FeedbackAlert>
+            ) : null}
+          </form>
+        </Form>
+      </div>
     </PageFrame>
   );
 }
@@ -774,7 +427,7 @@ function TutorialCard() {
             <div className="min-w-0 flex-1">
               <h2 className="text-sm font-semibold">Como integrar o OneDrive</h2>
               <p className="text-xs text-muted-foreground">
-                Quatro passos rápidos — do link ao import no studio.
+                Quatro passos — do link até Importar aula.
               </p>
             </div>
             <ChevronDown
@@ -794,12 +447,7 @@ function TutorialCard() {
                 className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 px-4 py-3.5 sm:gap-4"
               >
                 <div className="flex flex-col items-center gap-2">
-                  <span
-                    className={cn(
-                      'inline-flex size-8 shrink-0 items-center justify-center rounded-lg border text-xs font-bold tabular-nums',
-                      'border-primary/40 bg-primary/10 text-primary',
-                    )}
-                  >
+                  <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-primary/10 text-xs font-bold tabular-nums text-primary">
                     {index + 1}
                   </span>
                   {index < TUTORIAL_STEPS.length - 1 ? (
@@ -826,6 +474,14 @@ function TutorialCard() {
                           Abrir Graph Explorer ↗
                         </a>
                       ) : null}
+                      {index === 3 ? (
+                        <Link
+                          to="/importar"
+                          className="mt-2 inline-flex text-xs font-medium text-primary hover:underline"
+                        >
+                          Abrir Importar aula →
+                        </Link>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -836,11 +492,4 @@ function TutorialCard() {
       </section>
     </Collapsible>
   );
-}
-
-function formatBytes(size: number | null): string {
-  if (size == null || size <= 0) return 'tamanho desconhecido';
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }

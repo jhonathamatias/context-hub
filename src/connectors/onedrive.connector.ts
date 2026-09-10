@@ -1,6 +1,7 @@
 import { createWriteStream } from 'node:fs';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
+import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { Client } from '@microsoft/microsoft-graph-client';
 import type { DriveItem } from '@microsoft/microsoft-graph-types';
@@ -61,6 +62,8 @@ export type OneDriveInput = {
   importAll?: boolean;
   /** Override env token for private shares. */
   accessToken?: string;
+  /** Optional display name for a single-item import (extension preserved). */
+  originalName?: string;
 };
 
 export type OneDriveListedVideo = {
@@ -69,6 +72,32 @@ export type OneDriveListedVideo = {
   size: number | null;
   mimeType: string | null;
   webUrl: string | null;
+  thumbnailUrl: string | null;
+};
+
+export type OneDrivePlaybackInfo = {
+  itemId: string;
+  name: string;
+  mimeType: string | null;
+  size: number | null;
+  downloadUrl: string;
+};
+
+/** Metadata for deferred download (HTTP returns before bytes arrive). */
+export type OneDrivePlannedItem = {
+  itemId: string;
+  originalName: string;
+  expectedBytes: number | null;
+  contentType: string | null;
+  shareUrl: string;
+  extension: string;
+};
+
+export type OneDriveDownloadProgress = {
+  percent: number;
+  bytesReceived: number;
+  bytesTotal: number | null;
+  status: 'downloading' | 'completed';
 };
 
 type ShareListContext = {
@@ -77,12 +106,6 @@ type ShareListContext = {
   root: DriveItem;
   hasToken: boolean;
   resid?: string;
-};
-
-type ShareCollectContext = ShareListContext & {
-  input: OneDriveInput;
-  logger: FastifyBaseLogger;
-  download: (item: DriveItem) => Promise<CollectedSourceItem>;
 };
 
 const LIST_BY_KIND: Record<
@@ -109,42 +132,6 @@ const LIST_BY_KIND: Record<
   [OneDriveShareKind.Unsupported]: async () => {
     throw new VideoValidationError(
       'OneDrive share is not a video file or a folder containing videos',
-    );
-  },
-};
-
-const COLLECT_BY_KIND: Record<
-  OneDriveShareKind,
-  (ctx: ShareCollectContext) => Promise<CollectedSourceItem[]>
-> = {
-  [OneDriveShareKind.Folder]: async ({
-    client,
-    shareUrl,
-    root,
-    input,
-    download,
-    hasToken,
-    resid,
-  }) => {
-    if (!input.importAll) {
-      throw new VideoValidationError(
-        'Shared link points to a folder. Pass itemId for one video or importAll: true.',
-      );
-    }
-
-    const videos = (
-      await fetchChildren(client, shareUrl, root.id, hasToken, resid)
-    ).filter(isVideoItem);
-    if (videos.length === 0) {
-      throw new VideoValidationError('No video files found in the OneDrive folder');
-    }
-
-    return Promise.all(videos.map((video) => download(video)));
-  },
-  [OneDriveShareKind.Video]: async ({ root, download }) => [await download(root)],
-  [OneDriveShareKind.Unsupported]: async ({ root }) => {
-    throw new VideoValidationError(
-      `OneDrive item "${root.name ?? 'unknown'}" is not a supported video`,
     );
   },
 };
@@ -178,45 +165,173 @@ export class OneDriveVideoConnector implements SourceConnector<OneDriveInput> {
     });
   }
 
-  async collect(
-    input: OneDriveInput,
-    context: CollectContext,
-  ): Promise<CollectedSourceItem[]> {
+  /**
+   * Resolve a short-lived Graph download URL for in-app video preview
+   * (before importing into the pipeline).
+   */
+  async resolvePlayback(
+    input: Pick<OneDriveInput, 'shareUrl' | 'accessToken' | 'itemId'>,
+  ): Promise<OneDrivePlaybackInfo> {
+    if (!input.itemId?.trim()) {
+      throw new VideoValidationError('itemId is required to preview a OneDrive video');
+    }
     const resolved = await resolveShare(input.shareUrl);
     const token = input.accessToken ?? env.onedrive.accessToken;
     const hasToken = Boolean(token?.trim());
     const client = createOneDriveGraphClient(token);
-    const download = (item: DriveItem) =>
-      this.downloadItem(
-        client,
-        resolved.shareUrl,
-        item,
-        context.logger,
-        hasToken,
-        resolved.resid,
-      );
+    const item = await fetchChildItem(
+      client,
+      resolved,
+      input.itemId,
+      hasToken,
+    );
+    if (!isVideoItem(item)) {
+      throw new VideoValidationError('OneDrive item is not a supported video');
+    }
 
-    if (input.itemId) {
-      const item = await fetchChildItem(
+    let downloadUrl = readDownloadUrl(item);
+    if (!downloadUrl) {
+      // Re-fetch the item; list responses sometimes omit @microsoft.graph.downloadUrl.
+      const refreshed = await fetchChildItem(
         client,
         resolved,
         input.itemId,
         hasToken,
       );
-      return [await download(item)];
+      downloadUrl = readDownloadUrl(refreshed);
+    }
+    if (!downloadUrl) {
+      throw new VideoValidationError(
+        'Não foi possível obter URL de prévia deste vídeo no OneDrive',
+      );
     }
 
-    const root = await fetchRootItem(client, resolved, hasToken);
-    return COLLECT_BY_KIND[classifyShare(root)]({
+    return {
+      itemId: item.id ?? input.itemId,
+      name: item.name?.trim() || 'video',
+      mimeType: item.file?.mimeType ?? null,
+      size: item.size ?? null,
+      downloadUrl,
+    };
+  }
+
+  async collect(
+    input: OneDriveInput,
+    context: CollectContext,
+  ): Promise<CollectedSourceItem[]> {
+    const planned = await this.planCollect(input, context);
+    const resolved = await resolveShare(input.shareUrl);
+    const token = input.accessToken ?? env.onedrive.accessToken;
+    const hasToken = Boolean(token?.trim());
+    const client = createOneDriveGraphClient(token);
+
+    const items: CollectedSourceItem[] = [];
+    for (const plan of planned) {
+      const item = await fetchChildItem(
+        client,
+        resolved,
+        plan.itemId,
+        hasToken,
+      );
+      items.push(
+        await this.downloadItem(
+          client,
+          resolved.shareUrl,
+          item,
+          context.logger,
+          hasToken,
+          resolved.resid,
+        ),
+      );
+    }
+    return items;
+  }
+
+  /**
+   * Resolve which videos will be imported without downloading bytes.
+   * Enables returning source ids immediately and tracking download progress.
+   */
+  async planCollect(
+    input: OneDriveInput,
+    context: CollectContext,
+  ): Promise<OneDrivePlannedItem[]> {
+    const resolved = await resolveShare(input.shareUrl);
+    const token = input.accessToken ?? env.onedrive.accessToken;
+    const hasToken = Boolean(token?.trim());
+    const client = createOneDriveGraphClient(token);
+
+    let driveItems: DriveItem[];
+    if (input.itemId) {
+      driveItems = [
+        await fetchChildItem(client, resolved, input.itemId, hasToken),
+      ];
+    } else {
+      const root = await fetchRootItem(client, resolved, hasToken);
+      const kind = classifyShare(root);
+      if (kind === OneDriveShareKind.Video) {
+        driveItems = [root];
+      } else if (kind === OneDriveShareKind.Folder) {
+        if (!input.importAll) {
+          throw new VideoValidationError(
+            'Shared link points to a folder. Pass itemId for one video or importAll: true.',
+          );
+        }
+        driveItems = (
+          await fetchChildren(
+            client,
+            resolved.shareUrl,
+            root.id,
+            hasToken,
+            resolved.resid,
+          )
+        ).filter(isVideoItem);
+        if (driveItems.length === 0) {
+          throw new VideoValidationError(
+            'No video files found in the OneDrive folder',
+          );
+        }
+      } else {
+        throw new VideoValidationError(
+          'OneDrive share is not a video file or a folder containing videos',
+        );
+      }
+    }
+
+    context.logger.info(
+      { count: driveItems.length, connector: OneDriveOrigin.OneDrive },
+      'Planned OneDrive videos for deferred ingest',
+    );
+
+    return driveItems.map((item) => toPlannedItem(item, resolved.shareUrl));
+  }
+
+  async downloadPlannedItem(
+    plan: OneDrivePlannedItem,
+    options: {
+      accessToken?: string;
+      logger: FastifyBaseLogger;
+      progressPath?: string;
+    },
+  ): Promise<CollectedSourceItem> {
+    const resolved = await resolveShare(plan.shareUrl);
+    const token = options.accessToken ?? env.onedrive.accessToken;
+    const hasToken = Boolean(token?.trim());
+    const client = createOneDriveGraphClient(token);
+    const item = await fetchChildItem(
       client,
-      shareUrl: resolved.shareUrl,
-      root,
-      input,
-      logger: context.logger,
-      download,
+      resolved,
+      plan.itemId,
       hasToken,
-      ...(resolved.resid ? { resid: resolved.resid } : {}),
-    });
+    );
+    return this.downloadItem(
+      client,
+      resolved.shareUrl,
+      item,
+      options.logger,
+      hasToken,
+      resolved.resid,
+      options.progressPath,
+    );
   }
 
   private async downloadItem(
@@ -226,6 +341,7 @@ export class OneDriveVideoConnector implements SourceConnector<OneDriveInput> {
     logger: FastifyBaseLogger,
     hasToken: boolean,
     resid?: string,
+    progressPath?: string,
   ): Promise<CollectedSourceItem> {
     const name = item.name?.trim() || 'onedrive-video.mp4';
     const extension = resolveVideoExtension(name, item.file?.mimeType ?? undefined);
@@ -255,7 +371,10 @@ export class OneDriveVideoConnector implements SourceConnector<OneDriveInput> {
       hasToken,
       resid,
     );
-    await pipeline(stream, createWriteStream(contentPath));
+    await downloadWithProgress(stream, contentPath, {
+      expectedBytes: size ?? null,
+      progressPath,
+    });
 
     return {
       connectorKind: this.identity.kind,
@@ -284,7 +403,7 @@ async function fetchRootItem(
 ): Promise<DriveItem> {
   if (hasToken && resolved.resid) {
     try {
-      return await graphGet<DriveItem>(
+      return await fetchDriveItem(
         client,
         ownedItemApiPath(resolved.resid, OneDriveGraphResource.DriveItem),
         { hasToken, prefer: false },
@@ -294,7 +413,7 @@ async function fetchRootItem(
     }
   }
 
-  return graphGet<DriveItem>(
+  return fetchDriveItem(
     client,
     shareApiPath(resolved.shareUrl, OneDriveGraphResource.DriveItem),
     { hasToken },
@@ -309,7 +428,7 @@ async function fetchChildItem(
 ): Promise<DriveItem> {
   if (hasToken) {
     try {
-      return await graphGet<DriveItem>(
+      return await fetchDriveItem(
         client,
         ownedItemApiPath(itemId, OneDriveGraphResource.DriveItem),
         { hasToken, prefer: false },
@@ -319,7 +438,7 @@ async function fetchChildItem(
     }
   }
 
-  return graphGet<DriveItem>(
+  return fetchDriveItem(
     client,
     shareApiPath(resolved.shareUrl, OneDriveGraphResource.DriveItem, itemId),
     { hasToken },
@@ -335,26 +454,53 @@ async function fetchChildren(
 ): Promise<DriveItem[]> {
   if (hasToken && (resid || folderId)) {
     try {
-      const body = await graphGet<{ value?: DriveItem[] }>(
+      return await fetchChildrenAt(
         client,
-        ownedItemApiPath(
-          folderId ?? resid!,
-          OneDriveGraphResource.Children,
-        ),
+        ownedItemApiPath(folderId ?? resid!, OneDriveGraphResource.Children),
         { hasToken, prefer: false },
       );
-      return body.value ?? [];
     } catch {
       // Fall through to /shares children.
     }
   }
 
-  const body = await graphGet<{ value?: DriveItem[] }>(
+  return fetchChildrenAt(
     client,
     shareApiPath(shareUrl, OneDriveGraphResource.Children, folderId),
     { hasToken },
   );
-  return body.value ?? [];
+}
+
+async function fetchChildrenAt(
+  client: Client,
+  path: string,
+  options: { hasToken: boolean; prefer?: false },
+): Promise<DriveItem[]> {
+  try {
+    const body = await graphGet<{ value?: DriveItem[] }>(client, path, {
+      ...options,
+      expand: 'thumbnails',
+    });
+    return body.value ?? [];
+  } catch {
+    const body = await graphGet<{ value?: DriveItem[] }>(client, path, options);
+    return body.value ?? [];
+  }
+}
+
+async function fetchDriveItem(
+  client: Client,
+  path: string,
+  options: { hasToken: boolean; prefer?: false },
+): Promise<DriveItem> {
+  try {
+    return await graphGet<DriveItem>(client, path, {
+      ...options,
+      expand: 'thumbnails',
+    });
+  } catch {
+    return graphGet<DriveItem>(client, path, options);
+  }
 }
 
 async function openDownloadStream(
@@ -438,7 +584,97 @@ function toListedVideo(item: DriveItem): OneDriveListedVideo {
     size: item.size ?? null,
     mimeType: item.file?.mimeType ?? null,
     webUrl: item.webUrl ?? null,
+    thumbnailUrl: extractThumbnailUrl(item),
   };
+}
+
+function extractThumbnailUrl(item: DriveItem): string | null {
+  const record = item as DriveItem & {
+    thumbnails?: Array<{
+      small?: { url?: string };
+      medium?: { url?: string };
+      large?: { url?: string };
+    }>;
+  };
+  const set = record.thumbnails?.[0];
+  return set?.medium?.url ?? set?.small?.url ?? set?.large?.url ?? null;
+}
+
+function toPlannedItem(item: DriveItem, shareUrl: string): OneDrivePlannedItem {
+  const name = item.name?.trim() || 'onedrive-video.mp4';
+  const extension = resolveVideoExtension(name, item.file?.mimeType ?? undefined);
+  if (!ALLOWED_EXTENSIONS.has(extension)) {
+    throw new VideoValidationError(
+      `Unsupported OneDrive video ".${extension}". Allowed: ${[...ALLOWED_EXTENSIONS].join(', ')}`,
+    );
+  }
+  const size = item.size ?? null;
+  if (size !== null && size > env.maxUploadBytes) {
+    throw new VideoValidationError(
+      `OneDrive file exceeds MAX_UPLOAD_BYTES (${env.maxUploadBytes})`,
+    );
+  }
+  if (!item.id) {
+    throw new VideoValidationError('OneDrive item is missing an id');
+  }
+  return {
+    itemId: item.id,
+    originalName: basename(name),
+    expectedBytes: size,
+    contentType: item.file?.mimeType ?? `video/${extension}`,
+    shareUrl,
+    extension,
+  };
+}
+
+async function downloadWithProgress(
+  stream: NodeJS.ReadableStream,
+  contentPath: string,
+  options: {
+    expectedBytes: number | null;
+    progressPath?: string | undefined;
+  },
+): Promise<void> {
+  let received = 0;
+  let lastWriteAt = 0;
+
+  const writeProgress = async (
+    status: OneDriveDownloadProgress['status'],
+  ): Promise<void> => {
+    if (!options.progressPath) {
+      return;
+    }
+    const total = options.expectedBytes;
+    const percent =
+      total && total > 0
+        ? Math.min(99, Math.round((received / total) * 100))
+        : status === 'completed'
+          ? 100
+          : Math.min(95, Math.round(received / (1024 * 1024))); // MB heuristic
+    const payload: OneDriveDownloadProgress = {
+      percent: status === 'completed' ? 100 : percent,
+      bytesReceived: received,
+      bytesTotal: total,
+      status,
+    };
+    await writeFile(options.progressPath, JSON.stringify(payload), 'utf8');
+  };
+
+  const counter = new Transform({
+    transform(chunk, _encoding, callback) {
+      received += chunk.length;
+      const now = Date.now();
+      if (now - lastWriteAt >= 400) {
+        lastWriteAt = now;
+        void writeProgress('downloading');
+      }
+      callback(null, chunk);
+    },
+  });
+
+  await writeProgress('downloading');
+  await pipeline(stream, counter, createWriteStream(contentPath));
+  await writeProgress('completed');
 }
 
 function resolveVideoExtension(

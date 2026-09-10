@@ -75,6 +75,10 @@ export class JobQueueService {
     };
   }
 
+  async enqueueSourceIngest(sourceId: string) {
+    return this.enqueue(JobName.SourceIngest, { sourceId }, { force: true });
+  }
+
   async enqueueVideoExtract(sourceId: string) {
     return this.enqueue(JobName.VideoExtract, { sourceId });
   }

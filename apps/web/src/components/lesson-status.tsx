@@ -33,11 +33,11 @@ export function LessonStatus({
       )}
     >
       {status === "PROCESSING" || status === "PENDING" ? (
-        <span className="size-1.5 animate-pulse rounded-full bg-current" />
+        <span className="size-1.5 rounded-full bg-current opacity-70" />
       ) : null}
       {statusLabel[status]}
       {showPercent ? (
-        <span className="tabular-nums opacity-90">{Math.round(percent)}%</span>
+        <span className="tabular-nums opacity-70">{Math.round(percent)}%</span>
       ) : null}
     </span>
   );

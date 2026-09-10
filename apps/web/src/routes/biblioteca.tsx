@@ -1,11 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Search, Plus } from "lucide-react";
 import { api, type LessonStatus } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { LessonCard } from "@/components/lesson-card";
-import { AddLessonDialog } from "@/components/add-lesson-dialog";
 import { EmptyState, LoadingSkeleton, SoftError } from "@/components/states";
 import { PageFrame, PageFrameWidth } from "@/components/page-frame";
 import { cn } from "@/lib/utils";
@@ -74,13 +73,11 @@ function LibraryPage() {
             {lessons.data ? `${lessons.data.length} aulas` : "Suas aulas gravadas"}
           </p>
         </div>
-        <AddLessonDialog
-          trigger={
-            <Button className="shrink-0">
-              <Plus className="size-4" /> Adicionar aula
-            </Button>
-          }
-        />
+        <Button asChild className="shrink-0">
+          <Link to="/importar">
+            <Plus className="size-4" /> Adicionar aula
+          </Link>
+        </Button>
       </header>
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -121,7 +118,11 @@ function LibraryPage() {
           <EmptyState
             title="Nenhuma aula por aqui"
             description="Adicione um vídeo de aula e ele ficará pesquisável em poucos minutos."
-            action={<AddLessonDialog trigger={<Button>Adicionar aula</Button>} />}
+            action={
+              <Button asChild>
+                <Link to="/importar">Adicionar aula</Link>
+              </Button>
+            }
           />
         ) : (
           visible.map((lesson) => <LessonCard key={lesson.id} lesson={lesson} />)

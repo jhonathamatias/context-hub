@@ -1,20 +1,20 @@
 import type { SourceStatus } from '../database/enums';
 
-/** Public response after accepting a video (extract runs in the worker). */
+/** Public response after accepting a video (pipeline continues in the worker). */
 export function toPublicAcceptResult(result: {
   sourceId: string;
   jobId: string;
   connectorKind: string;
   originalName: string;
   status: SourceStatus;
-  queuedJob: 'video.extract';
+  queuedJob: string;
 }): {
   sourceId: string;
   jobId: string;
   connectorKind: string;
   originalName: string;
   status: SourceStatus;
-  queued: 'video.extract';
+  queued: string;
 } {
   return {
     sourceId: result.sourceId,

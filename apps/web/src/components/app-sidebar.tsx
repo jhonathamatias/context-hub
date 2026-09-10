@@ -7,7 +7,6 @@ import {
   Settings,
   Plus,
 } from 'lucide-react';
-import { AddLessonDialog } from './add-lesson-dialog';
 
 const items = [
   { to: '/', label: 'Início', icon: Home, exact: true },
@@ -31,16 +30,12 @@ export function AppSidebar() {
         </span>
       </Link>
 
-      <AddLessonDialog
-        trigger={
-          <button
-            type="button"
-            className="mb-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
-          >
-            <Plus className="size-4" /> Adicionar aula
-          </button>
-        }
-      />
+      <Link
+        to="/importar"
+        className="mb-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+      >
+        <Plus className="size-4" /> Adicionar aula
+      </Link>
 
       <nav className="flex flex-col gap-1">
         {items.map((item) => (
