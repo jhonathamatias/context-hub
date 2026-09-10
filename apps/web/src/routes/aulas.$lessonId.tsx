@@ -48,7 +48,7 @@ function LessonPage() {
     retry: false,
     refetchInterval: (q) =>
       q.state.data && (q.state.data.status === "PROCESSING" || q.state.data.status === "PENDING")
-        ? 4000
+        ? 2000
         : false,
   });
 
@@ -95,6 +95,8 @@ function LessonPage() {
   }
 
   const data = lesson.data;
+  const isProcessing =
+    data.status === "PROCESSING" || data.status === "PENDING";
   const meta = [formatDate(data.createdAt ?? data.updatedAt), formatDuration(data.durationSeconds)]
     .filter(Boolean)
     .join(" · ");
@@ -112,22 +114,33 @@ function LessonPage() {
         <div className="min-w-0">
           <h1 className="display-title text-xl leading-tight sm:text-3xl">{data.title}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
-            <LessonStatus status={data.status} />
+            <LessonStatus
+              status={data.status}
+              percent={pipeline?.progress?.percent}
+            />
             {meta ? <span className="text-sm text-muted-foreground">{meta}</span> : null}
           </div>
         </div>
-        <Button asChild className="shrink-0">
-          <Link to="/perguntar" search={{ aula: lessonId }}>
+        {isProcessing ? (
+          <Button className="shrink-0" disabled>
             <MessageCircleQuestion className="size-4" />
-            <span className="hidden sm:inline">Perguntar sobre esta aula</span>
-            <span className="sm:hidden">Perguntar</span>
-          </Link>
-        </Button>
+            <span className="hidden sm:inline">Disponível em breve</span>
+            <span className="sm:hidden">Aguarde</span>
+          </Button>
+        ) : (
+          <Button asChild className="shrink-0">
+            <Link to="/perguntar" search={{ aula: lessonId }}>
+              <MessageCircleQuestion className="size-4" />
+              <span className="hidden sm:inline">Perguntar sobre esta aula</span>
+              <span className="sm:hidden">Perguntar</span>
+            </Link>
+          </Button>
+        )}
       </header>
 
-      {data.status === "PROCESSING" || data.status === "PENDING" ? (
-        <div className="mt-4">
-          <ProcessingIndicator />
+      {isProcessing ? (
+        <div className="mt-5">
+          <ProcessingIndicator progress={pipeline?.progress} />
         </div>
       ) : null}
 

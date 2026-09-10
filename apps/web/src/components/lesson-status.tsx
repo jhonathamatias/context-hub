@@ -9,19 +9,36 @@ const styles: Record<Status, string> = {
   FAILED: "bg-destructive/10 text-destructive border-destructive/20",
 };
 
-export function LessonStatus({ status, className }: { status: Status; className?: string }) {
+export function LessonStatus({
+  status,
+  percent,
+  className,
+}: {
+  status: Status;
+  /** When processing, show e.g. "Processando 42%" */
+  percent?: number | null;
+  className?: string;
+}) {
+  const showPercent =
+    (status === "PROCESSING" || status === "PENDING") &&
+    percent != null &&
+    Number.isFinite(percent);
+
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center gap-1.5 rounded-sm border px-2 py-0.5 text-xs font-medium',
+        "inline-flex shrink-0 items-center gap-1.5 rounded-sm border px-2 py-0.5 text-xs font-medium",
         styles[status],
         className,
       )}
     >
-      {status === 'PROCESSING' ? (
+      {status === "PROCESSING" || status === "PENDING" ? (
         <span className="size-1.5 animate-pulse rounded-full bg-current" />
       ) : null}
       {statusLabel[status]}
+      {showPercent ? (
+        <span className="tabular-nums opacity-90">{Math.round(percent)}%</span>
+      ) : null}
     </span>
   );
 }

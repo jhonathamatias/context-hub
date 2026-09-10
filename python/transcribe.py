@@ -6,6 +6,42 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
+import wave
+from pathlib import Path
+
+
+def audio_duration_seconds(path: str) -> float | None:
+    try:
+        with wave.open(path, "rb") as handle:
+            frames = handle.getnframes()
+            rate = handle.getframerate()
+            if rate <= 0:
+                return None
+            return frames / float(rate)
+    except Exception:
+        return None
+
+
+def write_progress(
+    path: Path,
+    *,
+    percent: float,
+    position: float,
+    duration: float | None,
+    segments: int,
+    status: str,
+) -> None:
+    payload = {
+        "status": status,
+        "percent": round(max(0.0, min(100.0, percent)), 1),
+        "positionSeconds": round(position, 2),
+        "durationSeconds": round(duration, 2) if duration else None,
+        "segments": segments,
+        "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    print(json.dumps({"progress": payload}), flush=True)
 
 
 def main() -> int:
@@ -22,12 +58,37 @@ def main() -> int:
         print(f"faster-whisper is not installed: {exc}", file=sys.stderr)
         return 1
 
+    output_path = Path(args.output)
+    progress_path = output_path.with_name("progress.json")
+    duration = audio_duration_seconds(args.audio)
+
+    write_progress(
+        progress_path,
+        percent=1.0,
+        position=0.0,
+        duration=duration,
+        segments=0,
+        status="starting",
+    )
+
     compute_type = "int8" if args.device == "cpu" else "float16"
     model = WhisperModel(args.model, device=args.device, compute_type=compute_type)
     segments_iter, info = model.transcribe(args.audio, vad_filter=True)
 
+    write_progress(
+        progress_path,
+        percent=2.0,
+        position=0.0,
+        duration=duration,
+        segments=0,
+        status="transcribing",
+    )
+
     segments = []
     texts = []
+    last_write = 0.0
+    position = 0.0
+
     for segment in segments_iter:
         text = (segment.text or "").strip()
         if not text:
@@ -40,6 +101,22 @@ def main() -> int:
             }
         )
         texts.append(text)
+        position = float(segment.end)
+        now = time.monotonic()
+        if now - last_write >= 1.5 or len(segments) == 1:
+            if duration and duration > 0:
+                percent = min(99.0, max(2.0, (position / duration) * 100.0))
+            else:
+                percent = min(99.0, 2.0 + len(segments) * 0.5)
+            write_progress(
+                progress_path,
+                percent=percent,
+                position=position,
+                duration=duration,
+                segments=len(segments),
+                status="transcribing",
+            )
+            last_write = now
 
     payload = {
         "language": info.language,
@@ -51,6 +128,14 @@ def main() -> int:
     with open(args.output, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
 
+    write_progress(
+        progress_path,
+        percent=100.0,
+        position=duration or position,
+        duration=duration,
+        segments=len(segments),
+        status="done",
+    )
     print(json.dumps({"ok": True, "output": args.output}))
     return 0
 

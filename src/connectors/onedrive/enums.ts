@@ -24,4 +24,5 @@ export enum OneDriveOrigin {
 export enum GraphHttpStatus {
   Unauthorized = 401,
   Forbidden = 403,
+  NotFound = 404,
 }

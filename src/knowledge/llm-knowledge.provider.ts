@@ -1,4 +1,5 @@
 import { Inject, Service } from 'typedi';
+import { parseLlmJsonObject } from '../llm/parse-llm-json';
 import { LLM_PROVIDER, type LlmProvider } from '../llm/types';
 import {
   structuredLessonKnowledgeSchema,
@@ -33,15 +34,25 @@ export class LlmKnowledgeExtractionProvider
     const result = await this.llm.generateJson({
       useCase: 'knowledge_extraction',
       temperature: 0.2,
+      // Long lessons need headroom; 4096 often truncates mid-JSON.
+      maxOutputTokens: 8192,
       messages: [
         { role: 'system', content: prompt.system },
         { role: 'user', content: prompt.user },
       ],
     });
 
-    const parsed = structuredLessonKnowledgeSchema.safeParse(
-      JSON.parse(result.content),
-    );
+    let payload: unknown;
+    try {
+      payload = parseLlmJsonObject(result.content);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `${message}. Response length=${result.content.length}. Often caused by maxOutputTokens truncation.`,
+      );
+    }
+
+    const parsed = structuredLessonKnowledgeSchema.safeParse(payload);
     if (!parsed.success) {
       throw new Error(
         `Knowledge payload failed schema validation: ${parsed.error.message}`,

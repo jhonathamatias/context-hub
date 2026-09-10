@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { createReadStream } from 'node:fs';
 import { Service } from 'typedi';
 import {
   getBody,
@@ -138,6 +139,54 @@ export class SourcesController {
     const { sourceId } = getParams<SourceIdParams>(request);
     const result = await this.sourceQuery.getStatus(sourceId);
     return reply.status(200).send(result);
+  }
+
+  async streamMedia(request: FastifyRequest, reply: FastifyReply) {
+    const { sourceId } = getParams<SourceIdParams>(request);
+    const media = await this.sourceQuery.resolveMedia(sourceId);
+    const size = media.size;
+    const rangeHeader = request.headers.range;
+
+    reply.header('Accept-Ranges', 'bytes');
+    reply.header(
+      'Content-Disposition',
+      `inline; filename="${media.originalName.replace(/"/g, '')}"`,
+    );
+    reply.type(media.mimeType);
+
+    if (rangeHeader) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
+      if (!match) {
+        return reply
+          .status(416)
+          .header('Content-Range', `bytes */${size}`)
+          .send();
+      }
+
+      let start = match[1] ? Number(match[1]) : 0;
+      let end = match[2] ? Number(match[2]) : size - 1;
+      if (
+        Number.isNaN(start) ||
+        Number.isNaN(end) ||
+        start > end ||
+        start >= size
+      ) {
+        return reply
+          .status(416)
+          .header('Content-Range', `bytes */${size}`)
+          .send();
+      }
+      end = Math.min(end, size - 1);
+      const chunkSize = end - start + 1;
+
+      reply.status(206);
+      reply.header('Content-Range', `bytes ${start}-${end}/${size}`);
+      reply.header('Content-Length', chunkSize);
+      return reply.send(createReadStream(media.absolutePath, { start, end }));
+    }
+
+    reply.header('Content-Length', size);
+    return reply.send(createReadStream(media.absolutePath));
   }
 
   async getTranscript(request: FastifyRequest, reply: FastifyReply) {

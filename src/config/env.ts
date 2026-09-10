@@ -53,7 +53,7 @@ const rawEnvSchema = z.object({
   LLM_PROVIDER: z.enum(['openai', 'gemini']).optional(),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
   LLM_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
-  LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(4096),
+  LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(8192),
 
   KNOWLEDGE_PROVIDER: z.enum(['openai', 'gemini']).default('openai'),
 

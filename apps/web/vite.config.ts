@@ -11,6 +11,7 @@ export default defineConfig({
     proxy: {
       '/health': 'http://127.0.0.1:3000',
       '/sources': 'http://127.0.0.1:3000',
+      '/integrations': 'http://127.0.0.1:3000',
       '/search': 'http://127.0.0.1:3000',
       '/chat': 'http://127.0.0.1:3000',
       '/ask': 'http://127.0.0.1:3000',

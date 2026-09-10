@@ -118,6 +118,18 @@ export async function sourcesRoute(app: FastifyInstance) {
   );
 
   app.get(
+    '/sources/:sourceId/media',
+    {
+      ...sourceIdValidation,
+      schema: {
+        ...sourceIdValidation.schema,
+        summary: 'Stream the original lesson video (supports Range)',
+      },
+    },
+    (request, reply) => controller.streamMedia(request, reply),
+  );
+
+  app.get(
     '/sources/:sourceId/transcript',
     {
       ...sourceIdValidation,

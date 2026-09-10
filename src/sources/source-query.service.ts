@@ -1,9 +1,15 @@
+import { access, readFile, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Service } from 'typedi';
+import { env } from '../config/env';
 import {
   ChunkEmbedding,
   DatabaseService,
   KnowledgeExtraction,
+  KnowledgeExtractionStatus,
   ProcessingJob,
+  ProcessingJobStatus,
+  ProcessingStage,
   Source,
   SourceStatus,
   TranscriptChunk,
@@ -16,6 +22,7 @@ export type SourceSummary = {
   type: string;
   originalName: string;
   status: SourceStatus;
+  videoUrl: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -28,10 +35,19 @@ export type SourceListResult = {
   totalPages: number;
 };
 
+export type PipelineProgress = {
+  percent: number;
+  stage: string;
+  label: string;
+  detail: string | null;
+  transcriptionPercent: number | null;
+};
+
 export type SourceStatusResult = {
   id: string;
   originalName: string;
   status: SourceStatus;
+  videoUrl: string;
   createdAt: string;
   updatedAt: string;
   pipeline: {
@@ -48,6 +64,7 @@ export type SourceStatusResult = {
     };
     chunks: { count: number };
     embeddings: { count: number };
+    progress: PipelineProgress;
     latestJobs: Array<{
       id: string;
       stage: string;
@@ -90,15 +107,173 @@ function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
 
+function mediaUrlFor(sourceId: string): string {
+  return `/sources/${sourceId}/media`;
+}
+
+function guessVideoMime(originalName: string): string {
+  const lower = originalName.toLowerCase();
+  if (lower.endsWith('.webm')) return 'video/webm';
+  if (lower.endsWith('.mov')) return 'video/quicktime';
+  if (lower.endsWith('.mkv')) return 'video/x-matroska';
+  return 'video/mp4';
+}
+
 function toSourceSummary(source: Source): SourceSummary {
   return {
     id: source.id,
     type: source.type,
     originalName: source.originalName,
     status: source.status,
+    videoUrl: mediaUrlFor(source.id),
     createdAt: source.createdAt.toISOString(),
     updatedAt: source.updatedAt.toISOString(),
   };
+}
+
+export type SourceMediaInfo = {
+  absolutePath: string;
+  size: number;
+  mimeType: string;
+  originalName: string;
+};
+
+type WhisperProgressFile = {
+  percent?: number;
+  positionSeconds?: number;
+  durationSeconds?: number | null;
+  segments?: number;
+  status?: string;
+};
+
+async function readWhisperProgress(
+  transcriptionId: string,
+): Promise<WhisperProgressFile | null> {
+  const path = join(env.tempDir, `transcribe-${transcriptionId}`, 'progress.json');
+  try {
+    const raw = await readFile(path, 'utf8');
+    return JSON.parse(raw) as WhisperProgressFile;
+  } catch {
+    return null;
+  }
+}
+
+function buildPipelineProgress(input: {
+  sourceStatus: SourceStatus;
+  transcription: Transcription | null;
+  knowledge: KnowledgeExtraction | null;
+  embeddingCount: number;
+  latestJobs: ProcessingJob[];
+  whisper: WhisperProgressFile | null;
+}): PipelineProgress {
+  const { sourceStatus, transcription, knowledge, embeddingCount, latestJobs, whisper } =
+    input;
+
+  if (sourceStatus === SourceStatus.READY || embeddingCount > 0) {
+    return {
+      percent: 100,
+      stage: 'DONE',
+      label: 'Processado',
+      detail: null,
+      transcriptionPercent: 100,
+    };
+  }
+
+  if (sourceStatus === SourceStatus.FAILED) {
+    return {
+      percent: 0,
+      stage: 'FAILED',
+      label: 'Falhou',
+      detail: latestJobs.find((j) => j.status === ProcessingJobStatus.FAILED)
+        ?.errorMessage ?? null,
+      transcriptionPercent: null,
+    };
+  }
+
+  const succeeded = new Set(
+    latestJobs
+      .filter((j) => j.status === ProcessingJobStatus.SUCCEEDED)
+      .map((j) => j.stage),
+  );
+  const running = latestJobs.find((j) => j.status === ProcessingJobStatus.RUNNING);
+
+  const ingestDone = succeeded.has(ProcessingStage.INGEST);
+  const extractDone = succeeded.has(ProcessingStage.EXTRACT_AUDIO);
+  const transcribeDone =
+    transcription?.status === TranscriptionStatus.COMPLETED ||
+    succeeded.has(ProcessingStage.TRANSCRIBE);
+  const knowledgeDone =
+    knowledge?.status === KnowledgeExtractionStatus.COMPLETED;
+
+  let base = 0;
+  if (ingestDone) base = 8;
+  if (extractDone) base = 15;
+
+  if (!extractDone) {
+    const stage = running?.stage ?? ProcessingStage.INGEST;
+    return {
+      percent: stage === ProcessingStage.EXTRACT_AUDIO ? 12 : 5,
+      stage,
+      label:
+        stage === ProcessingStage.EXTRACT_AUDIO
+          ? 'Extraindo áudio'
+          : 'Recebendo vídeo',
+      detail: null,
+      transcriptionPercent: null,
+    };
+  }
+
+  if (!transcribeDone) {
+    const whisperPercent =
+      typeof whisper?.percent === 'number' ? whisper.percent : null;
+    const transcribeSlice =
+      whisperPercent != null ? (whisperPercent / 100) * 70 : 8;
+    const position = whisper?.positionSeconds;
+    const duration = whisper?.durationSeconds;
+    const detail =
+      position != null && duration != null
+        ? `${formatClock(position)} / ${formatClock(duration)}`
+        : whisperPercent != null
+          ? `Transcrição ${Math.round(whisperPercent)}%`
+          : 'Transcrevendo com Whisper (pode demorar em vídeos longos)';
+
+    return {
+      percent: Math.min(85, Math.round(base + transcribeSlice)),
+      stage: ProcessingStage.TRANSCRIBE,
+      label: 'Transcrevendo',
+      detail,
+      transcriptionPercent: whisperPercent,
+    };
+  }
+
+  if (!knowledgeDone) {
+    return {
+      percent: 90,
+      stage: ProcessingStage.EXTRACT_KNOWLEDGE,
+      label: 'Extraindo conhecimento',
+      detail: 'Gerando resumo e tópicos',
+      transcriptionPercent: 100,
+    };
+  }
+
+  return {
+    percent: 96,
+    stage: ProcessingStage.EMBED,
+    label: 'Gerando embeddings',
+    detail: 'Indexando para busca',
+    transcriptionPercent: 100,
+  };
+}
+
+function formatClock(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 @Service()
@@ -133,6 +308,25 @@ export class SourceQueryService {
     return toSourceSummary(source);
   }
 
+  async resolveMedia(sourceId: string): Promise<SourceMediaInfo> {
+    const source = await this.requireSource(sourceId);
+    const absolutePath = join(env.storageDir, source.storageKey);
+    try {
+      await access(absolutePath);
+    } catch {
+      const error = new Error(`Media file not found for source: ${sourceId}`);
+      (error as Error & { statusCode?: number }).statusCode = 404;
+      throw error;
+    }
+    const fileStat = await stat(absolutePath);
+    return {
+      absolutePath,
+      size: fileStat.size,
+      mimeType: guessVideoMime(source.originalName),
+      originalName: source.originalName,
+    };
+  }
+
   async getStatus(sourceId: string): Promise<SourceStatusResult> {
     const source = await this.requireSource(sourceId);
     const transcriptionRepo = this.database.getRepository(Transcription);
@@ -160,10 +354,27 @@ export class SourceQueryService {
         }),
       ]);
 
+    const whisper =
+      transcription?.status === TranscriptionStatus.PROCESSING
+        ? await readWhisperProgress(transcription.id)
+        : transcription?.status === TranscriptionStatus.COMPLETED
+          ? { percent: 100 }
+          : null;
+
+    const progress = buildPipelineProgress({
+      sourceStatus: source.status,
+      transcription,
+      knowledge,
+      embeddingCount,
+      latestJobs,
+      whisper,
+    });
+
     return {
       id: source.id,
       originalName: source.originalName,
       status: source.status,
+      videoUrl: mediaUrlFor(source.id),
       createdAt: source.createdAt.toISOString(),
       updatedAt: source.updatedAt.toISOString(),
       pipeline: {
@@ -180,6 +391,7 @@ export class SourceQueryService {
         },
         chunks: { count: chunkCount },
         embeddings: { count: embeddingCount },
+        progress,
         latestJobs: latestJobs.map((job) => ({
           id: job.id,
           stage: job.stage,

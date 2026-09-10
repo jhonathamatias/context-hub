@@ -17,6 +17,13 @@ export type LessonPipeline = {
   chunkCount: number;
   embeddingCount: number;
   suggestedTitle: string | null;
+  progress?: {
+    percent: number;
+    stage: string;
+    label: string;
+    detail: string | null;
+    transcriptionPercent: number | null;
+  } | null;
 };
 
 export type Lesson = {
@@ -89,34 +96,74 @@ export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
     super(message);
+    this.name = 'ApiError';
     this.status = status;
   }
+}
+
+const FRIENDLY_STATUS: Partial<Record<number, string>> = {
+  0: 'Não foi possível conectar à API. Verifique se o Context Hub está rodando.',
+  400: 'Dados inválidos. Revise o formulário e tente de novo.',
+  401: 'Sem permissão para esta operação.',
+  403: 'Acesso negado.',
+  404: 'Recurso não encontrado.',
+  409: 'Conflito ao salvar. Tente novamente.',
+  429: 'Muitas requisições. Aguarde um momento.',
+  500: 'Erro interno no servidor. Tente novamente em instantes.',
+  502: 'API indisponível (gateway). Verifique se o backend está no ar.',
+  503: 'API temporariamente indisponível.',
+};
+
+function friendlyApiMessage(status: number, raw?: string): string {
+  const detail = raw?.trim();
+  if (detail && detail !== 'request failed' && !detail.startsWith('<')) {
+    return detail;
+  }
+  return FRIENDLY_STATUS[status] ?? `Falha na requisição (${status || 'rede'}).`;
+}
+
+async function readErrorMessage(res: Response): Promise<string> {
+  const contentType = res.headers.get('content-type') ?? '';
+  try {
+    if (contentType.includes('application/json')) {
+      const body = (await res.json()) as {
+        message?: string;
+        error?: string;
+        statusCode?: number;
+      };
+      return friendlyApiMessage(
+        res.status,
+        body.message || body.error || undefined,
+      );
+    }
+    const text = (await res.text()).trim();
+    if (text && !text.startsWith('<')) {
+      return friendlyApiMessage(res.status, text.slice(0, 240));
+    }
+  } catch {
+    // fall through
+  }
+  return friendlyApiMessage(res.status);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
+    const hasBody = init?.body != null && init.body !== '';
     res = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
       headers: {
-        ...(init?.body instanceof FormData
-          ? {}
-          : { 'content-type': 'application/json' }),
+        ...(hasBody && !(init?.body instanceof FormData)
+          ? { 'content-type': 'application/json' }
+          : {}),
         ...(init?.headers ?? {}),
       },
     });
   } catch {
-    throw new ApiError('offline', 0);
+    throw new ApiError(friendlyApiMessage(0), 0);
   }
   if (!res.ok) {
-    let message = 'request failed';
-    try {
-      const body = (await res.json()) as { message?: string };
-      if (body.message) message = body.message;
-    } catch {
-      // keep default
-    }
-    throw new ApiError(message, res.status);
+    throw new ApiError(await readErrorMessage(res), res.status);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -222,6 +269,26 @@ function normalizePipeline(raw: unknown): LessonPipeline | undefined {
     chunkCount: Number(pick<number>(chunks, ['count']) ?? 0),
     embeddingCount: Number(pick<number>(embeddings, ['count']) ?? 0),
     suggestedTitle: pick<string>(knowledge, ['suggestedTitle']) ?? null,
+    progress: normalizeProgress(pick(o, ['progress'])),
+  };
+}
+
+function normalizeProgress(
+  raw: unknown,
+): LessonPipeline['progress'] {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as Record<string, unknown>;
+  const percent = Number(p['percent']);
+  if (!Number.isFinite(percent)) return null;
+  const transcriptionPercent = Number(p['transcriptionPercent']);
+  return {
+    percent: Math.max(0, Math.min(100, Math.round(percent))),
+    stage: String(p['stage'] ?? ''),
+    label: String(p['label'] ?? 'Processando'),
+    detail: typeof p['detail'] === 'string' ? p['detail'] : null,
+    transcriptionPercent: Number.isFinite(transcriptionPercent)
+      ? Math.max(0, Math.min(100, Math.round(transcriptionPercent)))
+      : null,
   };
 }
 

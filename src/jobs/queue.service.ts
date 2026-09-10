@@ -80,7 +80,7 @@ export class JobQueueService {
   }
 
   async enqueueTranscription(sourceId: string) {
-    return this.enqueue(JobName.TranscriptionRun, { sourceId });
+    return this.enqueue(JobName.TranscriptionRun, { sourceId }, { force: true });
   }
 
   async enqueueKnowledge(sourceId: string) {

@@ -2,11 +2,15 @@ import { Link } from '@tanstack/react-router';
 import type { Lesson } from '@/lib/api';
 import { formatDate, formatDuration } from '@/lib/format';
 import { LessonStatus } from './lesson-status';
+import { ProcessingIndicator } from './states';
 
 export function LessonCard({ lesson }: { lesson: Lesson }) {
   const date = formatDate(lesson.createdAt ?? lesson.updatedAt);
   const duration = formatDuration(lesson.durationSeconds);
   const meta = [date, duration].filter(Boolean).join(' · ');
+  const processing =
+    lesson.status === 'PROCESSING' || lesson.status === 'PENDING';
+  const progress = lesson.pipeline?.progress;
 
   return (
     <Link
@@ -26,8 +30,16 @@ export function LessonCard({ lesson }: { lesson: Lesson }) {
             {lesson.topics.slice(0, 4).join(' · ')}
           </p>
         ) : null}
+        {processing ? (
+          <div className="mt-3 max-w-sm">
+            <ProcessingIndicator compact progress={progress} />
+          </div>
+        ) : null}
       </div>
-      <LessonStatus status={lesson.status} />
+      <LessonStatus
+        status={lesson.status}
+        percent={progress?.percent}
+      />
     </Link>
   );
 }

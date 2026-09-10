@@ -1,4 +1,9 @@
 import { Service } from 'typedi';
+import { env } from '../config/env';
+import {
+  assertGraphFilesAccess,
+  normalizeAccessToken,
+} from '../connectors/onedrive/graph';
 import {
   DatabaseService,
   Integration,
@@ -66,11 +71,16 @@ export class IntegrationService {
       throw new VideoValidationError('Integration name is required');
     }
 
+    const accessToken = normalizeAccessToken(input.accessToken ?? undefined) ?? null;
+    if (input.kind === IntegrationKind.ONEDRIVE && accessToken) {
+      await assertGraphFilesAccess(accessToken);
+    }
+
     const repo = this.database.getRepository(Integration);
     const row = repo.create({
       kind: input.kind,
       name,
-      accessToken: normalizeToken(input.accessToken),
+      accessToken,
       metadata: metadataFromShareUrl(input.shareUrl),
     });
     const saved = await repo.save(row);
@@ -94,7 +104,12 @@ export class IntegrationService {
     if (input.clearAccessToken) {
       row.accessToken = null;
     } else if (input.accessToken !== undefined) {
-      row.accessToken = normalizeToken(input.accessToken);
+      const accessToken =
+        normalizeAccessToken(input.accessToken ?? undefined) ?? null;
+      if (row.kind === IntegrationKind.ONEDRIVE && accessToken) {
+        await assertGraphFilesAccess(accessToken);
+      }
+      row.accessToken = accessToken;
     }
 
     if (input.shareUrl !== undefined) {
@@ -118,14 +133,17 @@ export class IntegrationService {
   async resolveOneDriveAccessToken(
     integrationId?: string,
   ): Promise<string | undefined> {
-    if (!integrationId) {
-      return undefined;
+    if (integrationId) {
+      const row = await this.getById(integrationId);
+      if (row.kind !== IntegrationKind.ONEDRIVE) {
+        throw new VideoValidationError('Integration is not OneDrive');
+      }
+      const fromIntegration = normalizeAccessToken(row.accessToken);
+      if (fromIntegration) {
+        return fromIntegration;
+      }
     }
-    const row = await this.getById(integrationId);
-    if (row.kind !== IntegrationKind.ONEDRIVE) {
-      throw new VideoValidationError('Integration is not OneDrive');
-    }
-    return row.accessToken?.trim() || undefined;
+    return normalizeAccessToken(env.onedrive.accessToken);
   }
 
   async resolveOneDriveShareUrl(
@@ -149,11 +167,6 @@ export class IntegrationService {
   }
 }
 
-function normalizeToken(token: string | null | undefined): string | null {
-  const value = token?.trim();
-  return value ? value : null;
-}
-
 function metadataFromShareUrl(
   shareUrl: string | null | undefined,
 ): IntegrationMetadata | null {
@@ -166,7 +179,7 @@ function toPublic(row: Integration): PublicIntegration {
     id: row.id,
     kind: row.kind,
     name: row.name,
-    hasAccessToken: Boolean(row.accessToken?.trim()),
+    hasAccessToken: Boolean(normalizeAccessToken(row.accessToken)),
     shareUrl: row.metadata?.shareUrl ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

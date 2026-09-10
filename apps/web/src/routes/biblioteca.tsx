@@ -29,7 +29,7 @@ type Filter = "all" | LessonStatus;
 
 const filters: { key: Filter; label: string }[] = [
   { key: "all", label: "Todas" },
-  { key: "READY", label: "Prontas" },
+  { key: "READY", label: "Processadas" },
   { key: "PROCESSING", label: "Processando" },
   { key: "FAILED", label: "Com erro" },
 ];
@@ -44,7 +44,7 @@ function LibraryPage() {
     retry: false,
     refetchInterval: (q) =>
       (q.state.data ?? []).some((l) => l.status === "PENDING" || l.status === "PROCESSING")
-        ? 8000
+        ? 3000
         : false,
   });
 

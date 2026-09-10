@@ -19,6 +19,8 @@ import {
   createOneDriveGraphClient,
   graphGet,
   graphGetStream,
+  ownedItemApiPath,
+  resolveShare,
   shareApiPath,
 } from './onedrive/graph';
 import type {
@@ -73,6 +75,8 @@ type ShareListContext = {
   client: Client;
   shareUrl: string;
   root: DriveItem;
+  hasToken: boolean;
+  resid?: string;
 };
 
 type ShareCollectContext = ShareListContext & {
@@ -85,8 +89,20 @@ const LIST_BY_KIND: Record<
   OneDriveShareKind,
   (ctx: ShareListContext) => Promise<OneDriveListedVideo[]>
 > = {
-  [OneDriveShareKind.Folder]: async ({ client, shareUrl, root }) => {
-    const children = await fetchChildren(client, shareUrl, root.id);
+  [OneDriveShareKind.Folder]: async ({
+    client,
+    shareUrl,
+    root,
+    hasToken,
+    resid,
+  }) => {
+    const children = await fetchChildren(
+      client,
+      shareUrl,
+      root.id,
+      hasToken,
+      resid,
+    );
     return children.filter(isVideoItem).map(toListedVideo);
   },
   [OneDriveShareKind.Video]: async ({ root }) => [toListedVideo(root)],
@@ -107,6 +123,8 @@ const COLLECT_BY_KIND: Record<
     root,
     input,
     download,
+    hasToken,
+    resid,
   }) => {
     if (!input.importAll) {
       throw new VideoValidationError(
@@ -114,9 +132,9 @@ const COLLECT_BY_KIND: Record<
       );
     }
 
-    const videos = (await fetchChildren(client, shareUrl, root.id)).filter(
-      isVideoItem,
-    );
+    const videos = (
+      await fetchChildren(client, shareUrl, root.id, hasToken, resid)
+    ).filter(isVideoItem);
     if (videos.length === 0) {
       throw new VideoValidationError('No video files found in the OneDrive folder');
     }
@@ -147,34 +165,57 @@ export class OneDriveVideoConnector implements SourceConnector<OneDriveInput> {
     shareUrl: string,
     options: { accessToken?: string; logger?: FastifyBaseLogger } = {},
   ): Promise<OneDriveListedVideo[]> {
+    const hasToken = Boolean(options.accessToken?.trim());
+    const resolved = await resolveShare(shareUrl);
     const client = createOneDriveGraphClient(options.accessToken);
-    const root = await fetchDriveItem(client, shareUrl);
-    return LIST_BY_KIND[classifyShare(root)]({ client, shareUrl, root });
+    const root = await fetchRootItem(client, resolved, hasToken);
+    return LIST_BY_KIND[classifyShare(root)]({
+      client,
+      shareUrl: resolved.shareUrl,
+      root,
+      hasToken,
+      ...(resolved.resid ? { resid: resolved.resid } : {}),
+    });
   }
 
   async collect(
     input: OneDriveInput,
     context: CollectContext,
   ): Promise<CollectedSourceItem[]> {
-    const shareUrl = input.shareUrl.trim();
+    const resolved = await resolveShare(input.shareUrl);
     const token = input.accessToken ?? env.onedrive.accessToken;
+    const hasToken = Boolean(token?.trim());
     const client = createOneDriveGraphClient(token);
     const download = (item: DriveItem) =>
-      this.downloadItem(client, shareUrl, item, context.logger);
+      this.downloadItem(
+        client,
+        resolved.shareUrl,
+        item,
+        context.logger,
+        hasToken,
+        resolved.resid,
+      );
 
     if (input.itemId) {
-      const item = await fetchDriveItem(client, shareUrl, input.itemId);
+      const item = await fetchChildItem(
+        client,
+        resolved,
+        input.itemId,
+        hasToken,
+      );
       return [await download(item)];
     }
 
-    const root = await fetchDriveItem(client, shareUrl);
+    const root = await fetchRootItem(client, resolved, hasToken);
     return COLLECT_BY_KIND[classifyShare(root)]({
       client,
-      shareUrl,
+      shareUrl: resolved.shareUrl,
       root,
       input,
       logger: context.logger,
       download,
+      hasToken,
+      ...(resolved.resid ? { resid: resolved.resid } : {}),
     });
   }
 
@@ -183,6 +224,8 @@ export class OneDriveVideoConnector implements SourceConnector<OneDriveInput> {
     shareUrl: string,
     item: DriveItem,
     logger: FastifyBaseLogger,
+    hasToken: boolean,
+    resid?: string,
   ): Promise<CollectedSourceItem> {
     const name = item.name?.trim() || 'onedrive-video.mp4';
     const extension = resolveVideoExtension(name, item.file?.mimeType ?? undefined);
@@ -205,7 +248,13 @@ export class OneDriveVideoConnector implements SourceConnector<OneDriveInput> {
 
     const workDir = await mkdtemp(join(env.tempDir, 'onedrive-'));
     const contentPath = join(workDir, `download.${extension}`);
-    const stream = await openDownloadStream(client, shareUrl, item);
+    const stream = await openDownloadStream(
+      client,
+      shareUrl,
+      item,
+      hasToken,
+      resid,
+    );
     await pipeline(stream, createWriteStream(contentPath));
 
     return {
@@ -228,25 +277,82 @@ export class OneDriveVideoConnector implements SourceConnector<OneDriveInput> {
   }
 }
 
-async function fetchDriveItem(
+async function fetchRootItem(
   client: Client,
-  shareUrl: string,
-  itemId?: string,
+  resolved: { shareUrl: string; resid?: string },
+  hasToken: boolean,
 ): Promise<DriveItem> {
+  if (hasToken && resolved.resid) {
+    try {
+      return await graphGet<DriveItem>(
+        client,
+        ownedItemApiPath(resolved.resid, OneDriveGraphResource.DriveItem),
+        { hasToken, prefer: false },
+      );
+    } catch {
+      // Fall through to /shares — resid may be stale after SPO migration.
+    }
+  }
+
   return graphGet<DriveItem>(
     client,
-    shareApiPath(shareUrl, OneDriveGraphResource.DriveItem, itemId),
+    shareApiPath(resolved.shareUrl, OneDriveGraphResource.DriveItem),
+    { hasToken },
+  );
+}
+
+async function fetchChildItem(
+  client: Client,
+  resolved: { shareUrl: string; resid?: string },
+  itemId: string,
+  hasToken: boolean,
+): Promise<DriveItem> {
+  if (hasToken) {
+    try {
+      return await graphGet<DriveItem>(
+        client,
+        ownedItemApiPath(itemId, OneDriveGraphResource.DriveItem),
+        { hasToken, prefer: false },
+      );
+    } catch {
+      // Fall through to share-scoped item.
+    }
+  }
+
+  return graphGet<DriveItem>(
+    client,
+    shareApiPath(resolved.shareUrl, OneDriveGraphResource.DriveItem, itemId),
+    { hasToken },
   );
 }
 
 async function fetchChildren(
   client: Client,
   shareUrl: string,
-  folderId?: string,
+  folderId: string | undefined,
+  hasToken: boolean,
+  resid?: string,
 ): Promise<DriveItem[]> {
+  if (hasToken && (resid || folderId)) {
+    try {
+      const body = await graphGet<{ value?: DriveItem[] }>(
+        client,
+        ownedItemApiPath(
+          folderId ?? resid!,
+          OneDriveGraphResource.Children,
+        ),
+        { hasToken, prefer: false },
+      );
+      return body.value ?? [];
+    } catch {
+      // Fall through to /shares children.
+    }
+  }
+
   const body = await graphGet<{ value?: DriveItem[] }>(
     client,
     shareApiPath(shareUrl, OneDriveGraphResource.Children, folderId),
+    { hasToken },
   );
   return body.value ?? [];
 }
@@ -255,6 +361,8 @@ async function openDownloadStream(
   client: Client,
   shareUrl: string,
   item: DriveItem,
+  hasToken = false,
+  resid?: string,
 ): Promise<NodeJS.ReadableStream> {
   const preAuthUrl = readDownloadUrl(item);
   if (preAuthUrl) {
@@ -270,9 +378,26 @@ async function openDownloadStream(
     );
   }
 
+  if (hasToken && item.id) {
+    try {
+      return await graphGetStream(
+        client,
+        ownedItemApiPath(item.id, OneDriveGraphResource.Content),
+        { hasToken, prefer: false },
+      );
+    } catch {
+      // Fall through.
+    }
+  }
+
   return graphGetStream(
     client,
-    shareApiPath(shareUrl, OneDriveGraphResource.Content, item.id),
+    shareApiPath(
+      shareUrl,
+      OneDriveGraphResource.Content,
+      item.id ?? resid,
+    ),
+    { hasToken },
   );
 }
 

@@ -25,10 +25,12 @@ export const Route = createFileRoute('/configuracoes/')({
   component: SettingsPage,
 });
 
-enum CatalogStatus {
-  Available = 'available',
-  Connected = 'connected',
-}
+const CatalogStatus = {
+  Available: 'available',
+  Connected: 'connected',
+} as const;
+
+type CatalogStatus = (typeof CatalogStatus)[keyof typeof CatalogStatus];
 
 type CatalogItem = {
   id: string;
@@ -40,14 +42,13 @@ type CatalogItem = {
 };
 
 const STATUS_LABEL: Record<CatalogStatus, string> = {
-  [CatalogStatus.Available]: 'Disponível',
-  [CatalogStatus.Connected]: 'Ativa',
+  available: 'Disponível',
+  connected: 'Ativa',
 };
 
 const STATUS_CLASS: Record<CatalogStatus, string> = {
-  [CatalogStatus.Available]: 'border-primary/35 bg-primary/10 text-primary',
-  [CatalogStatus.Connected]:
-    'border-emerald-500/35 bg-emerald-500/10 text-emerald-400',
+  available: 'border-primary/35 bg-primary/10 text-primary',
+  connected: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-400',
 };
 
 const CATALOG: CatalogItem[] = [

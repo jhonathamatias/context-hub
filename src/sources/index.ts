@@ -2,6 +2,7 @@ export {
   SourceQueryService,
   type SourceKnowledgeResult,
   type SourceListResult,
+  type SourceMediaInfo,
   type SourceStatusResult,
   type SourceSummary,
   type SourceTranscriptResult,

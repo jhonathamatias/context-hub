@@ -28,6 +28,6 @@ export function formatDate(value?: string | null): string | null {
 export const statusLabel: Record<LessonStatus, string> = {
   PENDING: "Na fila",
   PROCESSING: "Processando",
-  READY: "Pronta",
+  READY: "Processado",
   FAILED: "Erro",
 };
