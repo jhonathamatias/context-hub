@@ -21,12 +21,14 @@ export {
   oneDriveStreamQuerySchema,
   previewOneDriveBodySchema,
   sourceIdParamsSchema,
+  updateSourceBodySchema,
   type IngestFilesystemBody,
   type IngestOneDriveBody,
   type ListSourcesQuery,
   type OneDriveStreamQuery,
   type PreviewOneDriveBody,
   type SourceIdParams,
+  type UpdateSourceBody,
 } from './schemas/sources.schema';
 export {
   createIntegrationBodySchema,

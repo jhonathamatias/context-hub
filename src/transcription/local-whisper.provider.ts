@@ -32,24 +32,28 @@ export class LocalWhisperTranscriptionProvider implements TranscriptionProvider 
 
     const rawOutputPath = join(input.workDir, 'whisper-raw.json');
 
+    const args = [
+      env.whisper.scriptPath,
+      '--audio',
+      input.audioPath,
+      '--model',
+      env.whisper.model,
+      '--device',
+      env.whisper.device,
+      '--output',
+      rawOutputPath,
+    ];
+    if (env.whisper.language) {
+      args.push('--language', env.whisper.language);
+    }
+    if (env.whisper.initialPrompt) {
+      args.push('--initial_prompt', env.whisper.initialPrompt);
+    }
+
     try {
-      await runProcess(
-        env.whisper.pythonPath,
-        [
-          env.whisper.scriptPath,
-          '--audio',
-          input.audioPath,
-          '--model',
-          env.whisper.model,
-          '--device',
-          env.whisper.device,
-          '--output',
-          rawOutputPath,
-        ],
-        {
-          timeoutMs: env.whisper.timeoutMs,
-        },
-      );
+      await runProcess(env.whisper.pythonPath, args, {
+        timeoutMs: env.whisper.timeoutMs,
+      });
     } catch (error) {
       if (error instanceof ProcessCommandError) {
         const details = [error.stderr, error.stdout].filter(Boolean).join('\n');

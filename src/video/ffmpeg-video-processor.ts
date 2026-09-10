@@ -153,6 +153,43 @@ export class FfmpegVideoProcessor implements VideoProcessor {
     return outputAudioPath;
   }
 
+  async extractThumbnail(
+    inputPath: string,
+    outputImagePath: string,
+    seekSeconds = 1,
+  ): Promise<string> {
+    const seek = Math.max(0, seekSeconds);
+    try {
+      await runProcess('ffmpeg', [
+        '-y',
+        '-ss',
+        String(seek),
+        '-i',
+        inputPath,
+        '-frames:v',
+        '1',
+        '-an',
+        '-q:v',
+        '3',
+        '-vf',
+        'scale=640:-2',
+        outputImagePath,
+      ]);
+    } catch (error) {
+      if (seek > 0) {
+        return this.extractThumbnail(inputPath, outputImagePath, 0);
+      }
+      if (error instanceof ProcessCommandError) {
+        throw new VideoValidationError(
+          `Failed to extract thumbnail from video: ${error.stderr || error.message}`,
+        );
+      }
+      throw error;
+    }
+
+    return outputImagePath;
+  }
+
   async process(
     inputPath: string,
     workDir: string,
@@ -169,9 +206,24 @@ export class FfmpegVideoProcessor implements VideoProcessor {
     const audioPath = join(workDir, 'audio.wav');
     await this.extractAudio(inputPath, audioPath);
 
+    const thumbnailPath = join(workDir, 'thumbnail.jpg');
+    let savedThumb: string | null = null;
+    try {
+      const seek =
+        metadata.durationSeconds > 4
+          ? Math.min(8, metadata.durationSeconds * 0.08)
+          : 0;
+      await this.extractThumbnail(inputPath, thumbnailPath, seek);
+      savedThumb = thumbnailPath;
+    } catch {
+      // Thumbnail is best-effort; audio extraction already succeeded.
+      savedThumb = null;
+    }
+
     return {
       sourcePath: inputPath,
       audioPath,
+      thumbnailPath: savedThumb,
       metadata,
     };
   }

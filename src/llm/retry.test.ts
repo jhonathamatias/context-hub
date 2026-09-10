@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  getRetryAfterMs,
   isRetryableLlmError,
   withControlledRetries,
 } from './retry';
@@ -15,7 +16,23 @@ describe('isRetryableLlmError', () => {
   it('retries timeout-like codes and messages', () => {
     assert.equal(isRetryableLlmError({ code: 'ETIMEDOUT' }), true);
     assert.equal(isRetryableLlmError({ message: 'Request timeout' }), true);
+    assert.equal(isRetryableLlmError({ message: 'quota exceeded' }), true);
     assert.equal(isRetryableLlmError({ message: 'bad request' }), false);
+    assert.equal(
+      isRetryableLlmError({ message: 'Knowledge payload failed schema validation' }),
+      false,
+    );
+  });
+});
+
+describe('getRetryAfterMs', () => {
+  it('parses Retry-After seconds from Headers', () => {
+    const headers = new Headers({ 'retry-after': '2' });
+    assert.equal(getRetryAfterMs({ headers }), 2000);
+  });
+
+  it('parses Retry-After from plain header object', () => {
+    assert.equal(getRetryAfterMs({ headers: { 'Retry-After': '1' } }), 1000);
   });
 });
 
@@ -70,5 +87,25 @@ describe('withControlledRetries', () => {
         (error as { status?: number }).status === 400,
     );
     assert.equal(calls, 1);
+  });
+
+  it('honors Retry-After when present', async () => {
+    let calls = 0;
+    const started = Date.now();
+    const result = await withControlledRetries(
+      async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw {
+            status: 429,
+            headers: new Headers({ 'retry-after': '0' }),
+          };
+        }
+        return 'ok';
+      },
+      { maxRetries: 1, baseDelayMs: 1 },
+    );
+    assert.equal(result.value, 'ok');
+    assert.ok(Date.now() - started < 5_000);
   });
 });

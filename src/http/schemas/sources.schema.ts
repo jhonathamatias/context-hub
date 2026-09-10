@@ -58,3 +58,9 @@ export const listSourcesQuerySchema = z.object({
 });
 
 export type ListSourcesQuery = z.infer<typeof listSourcesQuerySchema>;
+
+export const updateSourceBodySchema = z.object({
+  originalName: z.string().trim().min(1).max(512),
+});
+
+export type UpdateSourceBody = z.infer<typeof updateSourceBodySchema>;

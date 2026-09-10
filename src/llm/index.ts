@@ -1,6 +1,11 @@
 export { GeminiLlmProvider } from './gemini.llm.provider';
 export { OpenAiLlmProvider } from './openai.llm.provider';
+export { OllamaLlmProvider } from './ollama.llm.provider';
+export { FallbackLlmProvider } from './fallback.llm.provider';
+export { mapWithConcurrency } from './concurrency';
 export {
+  getRetryAfterMs,
+  isFallbackEligibleError,
   isRetryableLlmError,
   withControlledRetries,
 } from './retry';

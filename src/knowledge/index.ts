@@ -5,6 +5,11 @@ export {
   type StructuredLessonKnowledge,
 } from './knowledge.schema';
 export { LlmKnowledgeExtractionProvider } from './llm-knowledge.provider';
+export { groupChunksForMap } from './map-groups';
+export {
+  extractHierarchicalKnowledge,
+  createMemoryPartialStore,
+} from './hierarchical-extract';
 export {
   KNOWLEDGE_EXTRACTION_PROVIDER,
   KnowledgeService,
@@ -14,3 +19,4 @@ export type {
   KnowledgeExtractionInput,
   KnowledgeExtractionProvider,
 } from './types';
+

@@ -455,12 +455,14 @@ export class SourceIngestService {
   private sourcePaths(source: Source): {
     dir: string;
     audio: string;
+    thumbnail: string;
     original: string;
   } {
     const dir = join(env.storageDir, 'sources', source.id);
     return {
       dir,
       audio: join(dir, 'audio.wav'),
+      thumbnail: join(dir, 'thumbnail.jpg'),
       original: join(env.storageDir, source.storageKey),
     };
   }
@@ -505,6 +507,16 @@ export class SourceIngestService {
     // Audio extract is an intermediate step — keep PROCESSING until later stages finish.
     await this.state.setSourceStatus(source, SourceStatus.PROCESSING);
 
+    const paths = this.sourcePaths(source);
+    if (!(await this.pathExists(paths.thumbnail)) && (await this.pathExists(paths.original))) {
+      try {
+        await mkdir(paths.dir, { recursive: true });
+        await this.videoProcessor.extractThumbnail(paths.original, paths.thumbnail, 1);
+      } catch {
+        // Best-effort poster for older sources.
+      }
+    }
+
     return {
       sourceId: source.id,
       jobId: job?.id ?? source.id,
@@ -532,7 +544,7 @@ export class SourceIngestService {
   private async runFfmpegExtract(
     source: Source,
     extractJob: ProcessingJob,
-    paths: { dir: string; audio: string; original: string },
+    paths: { dir: string; audio: string; thumbnail: string; original: string },
     logger: FastifyBaseLogger,
   ): Promise<ExtractAudioResult> {
     await this.state.setSourceStatus(source, SourceStatus.PROCESSING);
@@ -552,6 +564,9 @@ export class SourceIngestService {
 
       await mkdir(paths.dir, { recursive: true });
       await rename(processed.audioPath, paths.audio);
+      if (processed.thumbnailPath) {
+        await rename(processed.thumbnailPath, paths.thumbnail);
+      }
 
       await this.state.markSucceeded(extractJob);
       // Not fully ready yet — transcription/knowledge/embeddings still to run.

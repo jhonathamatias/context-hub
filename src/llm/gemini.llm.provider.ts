@@ -69,7 +69,7 @@ export class GeminiLlmProvider implements LlmProvider {
         }
         return content;
       },
-      { maxRetries: env.llm.maxRetries },
+      { maxRetries: env.llm.maxRetries, baseDelayMs: 1_000 },
     );
 
     return {

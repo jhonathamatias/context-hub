@@ -29,6 +29,7 @@ export type VideoMetadata = {
 export type VideoProcessingResult = {
   sourcePath: string;
   audioPath: string;
+  thumbnailPath: string | null;
   metadata: VideoMetadata;
 };
 
@@ -41,6 +42,11 @@ export interface VideoProcessor {
   validate(inputPath: string, options: VideoValidationOptions): Promise<void>;
   probe(inputPath: string): Promise<VideoMetadata>;
   extractAudio(inputPath: string, outputAudioPath: string): Promise<string>;
+  extractThumbnail(
+    inputPath: string,
+    outputImagePath: string,
+    seekSeconds?: number,
+  ): Promise<string>;
   process(
     inputPath: string,
     workDir: string,

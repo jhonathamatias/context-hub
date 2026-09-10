@@ -21,3 +21,9 @@ export interface TranscriptionProvider {
   readonly name: string;
   transcribe(input: TranscribeInput): Promise<TranscriptionResult>;
 }
+
+/**
+ * Future extension point (not implemented): WhisperXTranscriptionProvider
+ * for alignment, VAD improvements, and optional diarization — keep
+ * TranscriptionProvider as the seam; do not couple callers to faster-whisper.
+ */

@@ -88,11 +88,11 @@ export class JobQueueService {
   }
 
   async enqueueKnowledge(sourceId: string) {
-    return this.enqueue(JobName.KnowledgeExtract, { sourceId });
+    return this.enqueue(JobName.KnowledgeExtract, { sourceId }, { force: true });
   }
 
   async enqueueEmbeddings(sourceId: string) {
-    return this.enqueue(JobName.EmbeddingsGenerate, { sourceId });
+    return this.enqueue(JobName.EmbeddingsGenerate, { sourceId }, { force: true });
   }
 
   async enqueueSourceIndex(sourceId: string) {

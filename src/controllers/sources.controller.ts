@@ -12,10 +12,12 @@ import {
   type OneDriveStreamQuery,
   type PreviewOneDriveBody,
   type SourceIdParams,
+  type UpdateSourceBody,
 } from '../http';
 import { JobQueueService } from '../jobs';
 import { IntegrationService } from '../integrations';
 import {
+  SourceLifecycleService,
   SourceQueryService,
   toPublicAcceptResult,
   toPublicQueuedResult,
@@ -27,6 +29,7 @@ export class SourcesController {
   constructor(
     private readonly ingestService: SourceIngestService,
     private readonly sourceQuery: SourceQueryService,
+    private readonly sourceLifecycle: SourceLifecycleService,
     private readonly jobs: JobQueueService,
     private readonly integrations: IntegrationService,
   ) {}
@@ -207,6 +210,26 @@ export class SourcesController {
     return reply.status(200).send(result);
   }
 
+  async update(request: FastifyRequest, reply: FastifyReply) {
+    const { sourceId } = getParams<SourceIdParams>(request);
+    const body = getBody<UpdateSourceBody>(request);
+    const source = await this.sourceLifecycle.update(sourceId, {
+      originalName: body.originalName,
+    });
+    return reply.status(200).send({
+      id: source.id,
+      originalName: source.originalName,
+      status: source.status,
+      updatedAt: source.updatedAt.toISOString(),
+    });
+  }
+
+  async remove(request: FastifyRequest, reply: FastifyReply) {
+    const { sourceId } = getParams<SourceIdParams>(request);
+    await this.sourceLifecycle.delete(sourceId, request.log);
+    return reply.status(204).send();
+  }
+
   async getStatus(request: FastifyRequest, reply: FastifyReply) {
     const { sourceId } = getParams<SourceIdParams>(request);
     const result = await this.sourceQuery.getStatus(sourceId);
@@ -261,6 +284,15 @@ export class SourcesController {
     return reply.send(createReadStream(media.absolutePath));
   }
 
+  async streamThumbnail(request: FastifyRequest, reply: FastifyReply) {
+    const { sourceId } = getParams<SourceIdParams>(request);
+    const thumb = await this.sourceQuery.resolveThumbnail(sourceId);
+    reply.header('Cache-Control', 'public, max-age=86400');
+    reply.header('Content-Length', thumb.size);
+    reply.type(thumb.mimeType);
+    return reply.send(createReadStream(thumb.absolutePath));
+  }
+
   async getTranscript(request: FastifyRequest, reply: FastifyReply) {
     const { sourceId } = getParams<SourceIdParams>(request);
     const result = await this.sourceQuery.getTranscript(sourceId);
@@ -282,14 +314,14 @@ export class SourcesController {
 
   async enqueueKnowledge(request: FastifyRequest, reply: FastifyReply) {
     const { sourceId } = getParams<SourceIdParams>(request);
-    await this.sourceQuery.getById(sourceId);
+    await this.sourceLifecycle.markProcessing(sourceId);
     const queued = await this.jobs.enqueueKnowledge(sourceId);
     return reply.status(202).send(toPublicQueuedResult(queued));
   }
 
   async embeddings(request: FastifyRequest, reply: FastifyReply) {
     const { sourceId } = getParams<SourceIdParams>(request);
-    await this.sourceQuery.getById(sourceId);
+    await this.sourceLifecycle.markProcessing(sourceId);
     const queued = await this.jobs.enqueueEmbeddings(sourceId);
     return reply.status(202).send(toPublicQueuedResult(queued));
   }

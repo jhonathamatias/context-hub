@@ -1,4 +1,4 @@
-import { access, readFile, stat } from 'node:fs/promises';
+import { access, mkdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Service } from 'typedi';
 import { env } from '../config/env';
@@ -16,6 +16,7 @@ import {
   Transcription,
   TranscriptionStatus,
 } from '../database';
+import { FfmpegVideoProcessor } from '../video/ffmpeg-video-processor';
 
 export type SourceSummary = {
   id: string;
@@ -23,6 +24,7 @@ export type SourceSummary = {
   originalName: string;
   status: SourceStatus;
   videoUrl: string;
+  thumbnailUrl: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -49,6 +51,7 @@ export type SourceStatusResult = {
   originalName: string;
   status: SourceStatus;
   videoUrl: string;
+  thumbnailUrl: string;
   createdAt: string;
   updatedAt: string;
   pipeline: {
@@ -61,6 +64,7 @@ export type SourceStatusResult = {
     knowledge: {
       status: string | null;
       suggestedTitle: string | null;
+      errorMessage: string | null;
       updatedAt: string | null;
     };
     chunks: { count: number };
@@ -112,6 +116,10 @@ function mediaUrlFor(sourceId: string): string {
   return `/sources/${sourceId}/media`;
 }
 
+function thumbnailUrlFor(sourceId: string): string {
+  return `/sources/${sourceId}/thumbnail`;
+}
+
 function guessVideoMime(originalName: string): string {
   const lower = originalName.toLowerCase();
   if (lower.endsWith('.webm')) return 'video/webm';
@@ -127,6 +135,7 @@ function toSourceSummary(source: Source): SourceSummary {
     originalName: source.originalName,
     status: source.status,
     videoUrl: mediaUrlFor(source.id),
+    thumbnailUrl: thumbnailUrlFor(source.id),
     createdAt: source.createdAt.toISOString(),
     updatedAt: source.updatedAt.toISOString(),
   };
@@ -137,6 +146,12 @@ export type SourceMediaInfo = {
   size: number;
   mimeType: string;
   originalName: string;
+};
+
+export type SourceThumbnailInfo = {
+  absolutePath: string;
+  size: number;
+  mimeType: string;
 };
 
 type WhisperProgressFile = {
@@ -203,7 +218,25 @@ function buildPipelineProgress(input: {
     ingest,
   } = input;
 
-  if (sourceStatus === SourceStatus.READY || embeddingCount > 0) {
+  if (knowledge?.status === KnowledgeExtractionStatus.PROCESSING) {
+    return {
+      percent: 90,
+      stage: ProcessingStage.EXTRACT_KNOWLEDGE,
+      label: 'Extraindo conhecimento',
+      detail: 'Gerando resumo e tópicos',
+      transcriptionPercent: 100,
+      ingestPercent: 100,
+    };
+  }
+
+  // Search index may exist before knowledge succeeds (soft-fail path).
+  // Only treat as fully done when the source is READY or knowledge finished.
+  if (
+    sourceStatus === SourceStatus.READY ||
+    (embeddingCount > 0 &&
+      (knowledge?.status === KnowledgeExtractionStatus.COMPLETED ||
+        knowledge?.status === KnowledgeExtractionStatus.FAILED))
+  ) {
     return {
       percent: 100,
       stage: 'DONE',
@@ -351,7 +384,10 @@ function formatClock(totalSeconds: number): string {
 
 @Service()
 export class SourceQueryService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly videoProcessor: FfmpegVideoProcessor,
+  ) {}
 
   async list(input: {
     page: number;
@@ -397,6 +433,46 @@ export class SourceQueryService {
       size: fileStat.size,
       mimeType: guessVideoMime(source.originalName),
       originalName: source.originalName,
+    };
+  }
+
+  async resolveThumbnail(sourceId: string): Promise<SourceThumbnailInfo> {
+    const source = await this.requireSource(sourceId);
+    const thumbPath = join(
+      env.storageDir,
+      'sources',
+      source.id,
+      'thumbnail.jpg',
+    );
+
+    try {
+      await access(thumbPath);
+    } catch {
+      const originalPath = join(env.storageDir, source.storageKey);
+      try {
+        await access(originalPath);
+        await mkdir(join(env.storageDir, 'sources', source.id), {
+          recursive: true,
+        });
+        await this.videoProcessor.extractThumbnail(
+          originalPath,
+          thumbPath,
+          1,
+        );
+      } catch {
+        const error = new Error(
+          `Thumbnail not available for source: ${sourceId}`,
+        );
+        (error as Error & { statusCode?: number }).statusCode = 404;
+        throw error;
+      }
+    }
+
+    const fileStat = await stat(thumbPath);
+    return {
+      absolutePath: thumbPath,
+      size: fileStat.size,
+      mimeType: 'image/jpeg',
     };
   }
 
@@ -459,6 +535,7 @@ export class SourceQueryService {
       originalName: source.originalName,
       status: source.status,
       videoUrl: mediaUrlFor(source.id),
+      thumbnailUrl: thumbnailUrlFor(source.id),
       createdAt: source.createdAt.toISOString(),
       updatedAt: source.updatedAt.toISOString(),
       pipeline: {
@@ -471,6 +548,7 @@ export class SourceQueryService {
         knowledge: {
           status: knowledge?.status ?? null,
           suggestedTitle: knowledge?.suggestedTitle ?? null,
+          errorMessage: knowledge?.errorMessage ?? null,
           updatedAt: toIso(knowledge?.updatedAt),
         },
         chunks: { count: chunkCount },

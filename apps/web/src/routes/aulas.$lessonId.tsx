@@ -1,13 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, MessageCircleQuestion } from "lucide-react";
 import { api } from "@/lib/api";
+import { groupTranscriptSegments } from "@/lib/group-transcript-segments";
 import { Button } from "@/components/ui/button";
 import { LessonStatus } from "@/components/lesson-status";
 import { LessonPlayer, type LessonPlayerHandle } from "@/components/lesson-player";
 import { TranscriptSegment } from "@/components/transcript-segment";
 import { EmptyState, LoadingSkeleton, ProcessingIndicator, SoftError } from "@/components/states";
+import { FeedbackAlert } from "@/components/ui/alert";
 import { PageFrame, PageFrameWidth } from "@/components/page-frame";
 import { formatDate, formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -33,7 +35,7 @@ export const Route = createFileRoute("/aulas/$lessonId")({
   component: LessonPage,
 });
 
-type Tab = "resumo" | "topicos" | "transcricao";
+type Tab = "resumo" | "topicos";
 
 function LessonPage() {
   const { lessonId } = Route.useParams();
@@ -41,23 +43,33 @@ function LessonPage() {
   const playerRef = useRef<LessonPlayerHandle | null>(null);
   const [tab, setTab] = useState<Tab>("resumo");
   const [currentTime, setCurrentTime] = useState(t ?? 0);
+  const [seekApplied, setSeekApplied] = useState(false);
+  const queryClient = useQueryClient();
 
   const lesson = useQuery({
     queryKey: ["lesson", lessonId],
     queryFn: () => api.getLesson(lessonId),
     retry: false,
-    refetchInterval: (q) =>
-      q.state.data && (q.state.data.status === "PROCESSING" || q.state.data.status === "PENDING")
-        ? 2000
-        : false,
+    refetchInterval: (q) => {
+      const data = q.state.data;
+      if (!data) return false;
+      if (data.status === "PROCESSING" || data.status === "PENDING") return 2000;
+      if (data.pipeline?.knowledgeStatus === "PROCESSING") return 2000;
+      return false;
+    },
   });
 
   const pipeline = lesson.data?.pipeline;
   const hasTranscript = pipeline?.transcriptionStatus === "COMPLETED";
-  const hasKnowledge =
-    pipeline?.knowledgeStatus === "COMPLETED" ||
-    pipeline?.knowledgeStatus === "FAILED";
   const knowledgeFailed = pipeline?.knowledgeStatus === "FAILED";
+  const knowledgeProcessing = pipeline?.knowledgeStatus === "PROCESSING";
+  const hasKnowledge =
+    pipeline?.knowledgeStatus === "COMPLETED" || knowledgeFailed;
+  const needsSearchIndex =
+    hasTranscript && (pipeline?.embeddingCount ?? 0) === 0;
+  const canRetryPipeline =
+    hasTranscript &&
+    (knowledgeFailed || needsSearchIndex || lesson.data?.status === "FAILED");
 
   const transcript = useQuery({
     queryKey: ["transcript", lessonId],
@@ -69,14 +81,46 @@ function LessonPage() {
   const knowledge = useQuery({
     queryKey: ["knowledge", lessonId],
     queryFn: () => api.getKnowledge(lessonId),
-    enabled: Boolean(lessonId) && hasKnowledge,
+    enabled:
+      Boolean(lessonId) &&
+      pipeline?.knowledgeStatus === "COMPLETED",
     retry: false,
+  });
+
+  // When knowledge flips to COMPLETED after polling, ensure content is fetched.
+  useEffect(() => {
+    if (pipeline?.knowledgeStatus === "COMPLETED") {
+      void queryClient.invalidateQueries({ queryKey: ["knowledge", lessonId] });
+    }
+  }, [pipeline?.knowledgeStatus, lessonId, queryClient]);
+
+  const retryPipeline = useMutation({
+    mutationFn: async () => {
+      const current = lesson.data;
+      if (!current) throw new Error("Aula não carregada");
+      await api.retryPipeline(current);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["lesson", lessonId] });
+      await queryClient.invalidateQueries({ queryKey: ["knowledge", lessonId] });
+      await queryClient.invalidateQueries({ queryKey: ["lessons"] });
+    },
   });
 
   const seek = (seconds: number) => {
     setCurrentTime(seconds);
     playerRef.current?.seekTo(seconds);
   };
+
+  useEffect(() => {
+    if (seekApplied || t == null || !lesson.data?.videoUrl) return;
+    const timer = window.setTimeout(() => {
+      playerRef.current?.seekTo(t);
+      setCurrentTime(t);
+      setSeekApplied(true);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [lesson.data?.videoUrl, seekApplied, t]);
 
   if (lesson.isLoading) {
     return (
@@ -96,7 +140,14 @@ function LessonPage() {
 
   const data = lesson.data;
   const isProcessing =
-    data.status === "PROCESSING" || data.status === "PENDING";
+    data.status === "PROCESSING" ||
+    data.status === "PENDING" ||
+    knowledgeProcessing;
+  const showProcessIndicator =
+    isProcessing ||
+    (pipeline?.progress?.stage != null &&
+      pipeline.progress.stage !== "DONE" &&
+      pipeline.progress.percent < 100);
   const meta = [formatDate(data.createdAt ?? data.updatedAt), formatDuration(data.durationSeconds)]
     .filter(Boolean)
     .join(" · ");
@@ -138,15 +189,57 @@ function LessonPage() {
         )}
       </header>
 
-      {isProcessing ? (
+      {showProcessIndicator ? (
         <div className="mt-5">
           <ProcessingIndicator progress={pipeline?.progress} />
         </div>
       ) : null}
 
-      {data.status === "FAILED" ? (
-        <div className="mt-4">
-          <SoftError message="Esta aula não pôde ser preparada. Você pode enviá-la novamente pela biblioteca." />
+      {data.status === "FAILED" || canRetryPipeline ? (
+        <div className="mt-4 space-y-3">
+          <FeedbackAlert
+            tone={knowledgeFailed || needsSearchIndex ? "warning" : "destructive"}
+            title={
+              knowledgeFailed
+                ? "Resumo indisponível"
+                : needsSearchIndex
+                  ? "Índice de busca pendente"
+                  : "Falha no processamento"
+            }
+          >
+            <p>
+              {knowledgeFailed
+                ? "Não foi possível gerar o resumo agora. A transcrição e a busca continuam disponíveis quando o índice existir."
+                : needsSearchIndex
+                  ? "A transcrição está pronta, mas o índice de busca ainda não foi gerado."
+                  : "Esta aula não pôde ser preparada por completo."}
+            </p>
+            {pipeline?.knowledgeError ? (
+              <p className="mt-2 text-xs opacity-80 line-clamp-3">
+                Detalhe: {pipeline.knowledgeError}
+              </p>
+            ) : null}
+            {canRetryPipeline ? (
+              <div className="mt-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={retryPipeline.isPending || isProcessing}
+                  onClick={() => retryPipeline.mutate()}
+                >
+                  {retryPipeline.isPending ? "Reenfileirando…" : "Tentar novamente"}
+                </Button>
+              </div>
+            ) : null}
+            {retryPipeline.isError ? (
+              <p className="mt-2 text-sm opacity-90">
+                {retryPipeline.error instanceof Error
+                  ? retryPipeline.error.message
+                  : "Não foi possível reenfileirar agora."}
+              </p>
+            ) : null}
+          </FeedbackAlert>
         </div>
       ) : null}
 
@@ -164,7 +257,6 @@ function LessonPage() {
                 [
                   ["resumo", "Resumo"],
                   ["topicos", "Tópicos"],
-                  ["transcricao", "Transcrição"],
                 ] as const
               ).map(([key, label]) => (
                 <button
@@ -184,16 +276,20 @@ function LessonPage() {
             </div>
 
             <div className="mt-6">
-              {tab !== "transcricao" && !hasKnowledge ? (
+              {knowledgeProcessing ? (
+                <p className="text-sm text-muted-foreground">
+                  Gerando o resumo desta aula…
+                </p>
+              ) : !hasKnowledge && !knowledgeFailed ? (
                 <p className="text-sm text-muted-foreground">
                   O resumo desta aula ainda está sendo preparado.
                 </p>
-              ) : tab !== "transcricao" && knowledge.isLoading ? (
+              ) : knowledge.isLoading || knowledge.isFetching ? (
                 <LoadingSkeleton rows={2} />
-              ) : tab !== "transcricao" && (knowledge.isError || knowledgeFailed) ? (
+              ) : knowledgeFailed ? (
                 <p className="text-sm text-muted-foreground">
-                  Não foi possível gerar o resumo agora (limite do provedor de IA).
-                  A transcrição e a busca ainda podem funcionar.
+                  Resumo indisponível. Use “Tentar novamente” acima para reprocessar
+                  a partir dos resultados parciais.
                 </p>
               ) : tab === "resumo" ? (
                 <div className="space-y-8">
@@ -237,35 +333,36 @@ function LessonPage() {
                     </div>
                   ) : null}
                 </div>
-              ) : tab === "topicos" ? (
-                (knowledge.data?.topics.length ?? 0) > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {knowledge.data?.topics.map((topic) => (
-                      <span
-                        key={topic}
-                        className="rounded-full border border-border bg-card px-3 py-1 text-sm"
-                      >
-                        {topic}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Os tópicos desta aula ainda estão sendo preparados.
-                  </p>
-                )
-              ) : !hasTranscript ? (
-                <p className="text-sm text-muted-foreground">
-                  A transcrição desta aula ainda não está disponível.
-                </p>
+              ) : (knowledge.data?.topics.length ?? 0) > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {knowledge.data?.topics.map((topic) => (
+                    <span
+                      key={topic}
+                      className="rounded-full border border-border bg-card px-3 py-1 text-sm"
+                    >
+                      {topic}
+                    </span>
+                  ))}
+                </div>
               ) : (
-                <TranscriptList
-                  lessonId={lessonId}
-                  onSelect={seek}
-                  currentTime={currentTime}
-                  className="max-h-none"
-                />
+                <p className="text-sm text-muted-foreground">
+                  Os tópicos desta aula ainda estão sendo preparados.
+                </p>
               )}
+            </div>
+          </div>
+
+          {/* Mobile transcript (desktop uses the side panel) */}
+          <div className="mt-8 lg:hidden">
+            <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+              Transcrição
+            </h2>
+            <div className="mt-2">
+              <TranscriptList
+                onSelect={seek}
+                currentTime={currentTime}
+                className="max-h-[50vh] overflow-y-auto pr-1"
+              />
             </div>
           </div>
         </div>
@@ -275,18 +372,11 @@ function LessonPage() {
             Transcrição
           </h2>
           <div className="mt-2">
-            {!hasTranscript ? (
-              <p className="text-sm text-muted-foreground">
-                A transcrição desta aula ainda não está disponível.
-              </p>
-            ) : (
-              <TranscriptList
-                lessonId={lessonId}
-                onSelect={seek}
-                currentTime={currentTime}
-                className="max-h-[70vh] overflow-y-auto pr-1"
-              />
-            )}
+            <TranscriptList
+              onSelect={seek}
+              currentTime={currentTime}
+              className="max-h-[70vh] overflow-y-auto pr-1"
+            />
           </div>
         </aside>
       </div>
@@ -298,11 +388,17 @@ function LessonPage() {
     currentTime: time,
     className,
   }: {
-    lessonId: string;
     onSelect: (seconds: number) => void;
     currentTime: number;
     className?: string | undefined;
   }) {
+    if (!hasTranscript) {
+      return (
+        <p className="text-sm text-muted-foreground">
+          A transcrição desta aula ainda não está disponível.
+        </p>
+      );
+    }
     if (transcript.isLoading) return <LoadingSkeleton rows={3} />;
     if (transcript.isError)
       return (
@@ -319,13 +415,19 @@ function LessonPage() {
         />
       );
 
+    const blocks = groupTranscriptSegments(segments);
+
     return (
       <div className={cn("space-y-0.5", className)}>
-        {segments.map((segment, i) => (
+        {blocks.map((block, i) => (
           <TranscriptSegment
-            key={`${segment.startSeconds}-${i}`}
-            segment={segment}
-            active={time >= segment.startSeconds && time < (segment.endSeconds || Infinity)}
+            key={`${block.startSeconds}-${i}`}
+            segment={{
+              startSeconds: block.startSeconds,
+              endSeconds: block.endSeconds,
+              text: block.text,
+            }}
+            active={time >= block.startSeconds && time < (block.endSeconds || Infinity)}
             onSelect={onSelect}
           />
         ))}

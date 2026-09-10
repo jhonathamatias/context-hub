@@ -61,7 +61,7 @@ export class OpenAiLlmProvider implements LlmProvider {
           }),
         };
       },
-      { maxRetries: env.llm.maxRetries },
+      { maxRetries: env.llm.maxRetries, baseDelayMs: 1_000 },
     );
 
     return {

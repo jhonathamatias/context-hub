@@ -15,9 +15,12 @@ import {
   LlmKnowledgeExtractionProvider,
 } from '../knowledge';
 import {
+  FallbackLlmProvider,
   GeminiLlmProvider,
   LLM_PROVIDER,
+  OllamaLlmProvider,
   OpenAiLlmProvider,
+  type LlmProvider,
 } from '../llm';
 import { PgVectorRepository, VECTOR_REPOSITORY } from '../search';
 import {
@@ -25,18 +28,49 @@ import {
   TRANSCRIPTION_PROVIDER,
 } from '../transcription';
 
+function resolveLlmProvider(
+  name: 'openai' | 'gemini' | 'ollama',
+): LlmProvider {
+  switch (name) {
+    case 'gemini':
+      return Container.get(GeminiLlmProvider);
+    case 'ollama':
+      return new OllamaLlmProvider({
+        baseUrl: env.ollama.baseUrl,
+        model: env.ollama.model,
+        timeoutMs: env.llm.timeoutMs,
+        maxRetries: env.llm.maxRetries,
+        maxOutputTokens: env.llm.maxOutputTokens,
+      });
+    default:
+      return Container.get(OpenAiLlmProvider);
+  }
+}
+
 /** Shared Typedi bindings for API and worker processes. */
 export function registerDomainProviders(logger?: FastifyBaseLogger): void {
   Container.set(
     TRANSCRIPTION_PROVIDER,
     Container.get(LocalWhisperTranscriptionProvider),
   );
-  Container.set(
-    LLM_PROVIDER,
-    env.llm.provider === 'gemini'
-      ? Container.get(GeminiLlmProvider)
-      : Container.get(OpenAiLlmProvider),
-  );
+
+  const primary = resolveLlmProvider(env.llm.provider);
+  const fallbackName = env.llm.fallbackProvider;
+  const llm: LlmProvider =
+    fallbackName && fallbackName !== env.llm.provider
+      ? new FallbackLlmProvider(
+          primary,
+          resolveLlmProvider(fallbackName),
+          logger
+            ? {
+                info: (obj, msg) => logger.info(obj, msg),
+                warn: (obj, msg) => logger.warn(obj, msg),
+              }
+            : undefined,
+        )
+      : primary;
+
+  Container.set(LLM_PROVIDER, llm);
   Container.set(
     KNOWLEDGE_EXTRACTION_PROVIDER,
     Container.get(LlmKnowledgeExtractionProvider),
@@ -56,8 +90,11 @@ export function registerDomainProviders(logger?: FastifyBaseLogger): void {
   logger?.info(
     {
       llmProvider: env.llm.provider,
+      llmFallbackProvider: env.llm.fallbackProvider ?? null,
+      llmModel: primary.model,
       llmTimeoutMs: env.llm.timeoutMs,
       llmMaxRetries: env.llm.maxRetries,
+      llmConcurrency: env.llm.concurrency,
     },
     'LLM provider selected',
   );
@@ -70,5 +107,14 @@ export function registerDomainProviders(logger?: FastifyBaseLogger): void {
           : env.embedding.openaiModel,
     },
     'Embedding provider selected',
+  );
+  logger?.info(
+    {
+      whisperModel: env.whisper.model,
+      whisperDevice: env.whisper.device,
+      whisperLanguage: env.whisper.language ?? null,
+      whisperInitialPromptEnabled: Boolean(env.whisper.initialPrompt),
+    },
+    'Whisper transcription config',
   );
 }

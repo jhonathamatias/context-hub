@@ -182,6 +182,28 @@ export class EmbeddingService {
               ?.dimension ??
             null;
 
+          if (pending.length === 0) {
+            logger.info(
+              {
+                sourceId,
+                transcriptionId: transcription.id,
+                chunkCount: chunks.length,
+                skippedCount,
+              },
+              'All chunk embeddings up to date; skipping provider calls',
+            );
+            return {
+              sourceId,
+              transcriptionId: transcription.id,
+              chunkCount: chunks.length,
+              embeddedCount: 0,
+              skippedCount,
+              provider: this.provider.name,
+              model: this.provider.model,
+              dimension,
+            } satisfies ProcessEmbeddingsResult;
+          }
+
           const batches = batchItems(pending, env.embedding.batchSize);
           for (const batch of batches) {
             const texts = batch.map((item) => item.chunk.normalizedText.trim());
@@ -254,11 +276,34 @@ export class EmbeddingService {
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const existingCount = await embeddingRepo.count({ where: { sourceId } });
+      const retryableQuota =
+        /429|quota|rate limit/i.test(message) && existingCount > 0;
 
       embedJob.status = ProcessingJobStatus.FAILED;
       embedJob.errorMessage = message;
       embedJob.finishedAt = new Date();
       await jobRepo.save(embedJob);
+
+      if (retryableQuota) {
+        // Keep search usable: do not fail the whole source when embeddings already exist.
+        source.status = SourceStatus.READY;
+        await sourceRepo.save(source);
+        logger.warn(
+          { sourceId, existingCount, err: message.slice(0, 240) },
+          'Embedding refresh hit provider quota; keeping existing embeddings',
+        );
+        return {
+          sourceId,
+          transcriptionId: transcription.id,
+          chunkCount: chunks.length,
+          embeddedCount: 0,
+          skippedCount: existingCount,
+          provider: this.provider.name,
+          model: this.provider.model,
+          dimension: this.provider.dimension ?? null,
+        };
+      }
 
       source.status = SourceStatus.FAILED;
       await sourceRepo.save(source);

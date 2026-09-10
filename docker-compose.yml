@@ -91,9 +91,23 @@ services:
     networks:
       - context-hub
 
+  # Local LLM fallback (CPU). Pull models manually — see docs below / .env.example.
+  # docker compose exec ollama ollama pull qwen3:8b
+  ollama:
+    image: ollama/ollama:latest
+    container_name: context-hub-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - context-hub
+
 volumes:
   node_modules:
   api_db_ignore:
+  ollama_data:
 
 networks:
   context-hub:

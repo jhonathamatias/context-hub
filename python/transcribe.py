@@ -50,6 +50,16 @@ def main() -> int:
     parser.add_argument("--output", required=True, help="Path to write JSON output")
     parser.add_argument("--model", default="tiny", help="Whisper model size")
     parser.add_argument("--device", default="cpu", help="cpu or cuda")
+    parser.add_argument(
+        "--language",
+        default=None,
+        help="Optional language code (e.g. pt). Omit for auto-detect.",
+    )
+    parser.add_argument(
+        "--initial_prompt",
+        default=None,
+        help="Optional initial prompt / glossary for Whisper decoding bias.",
+    )
     args = parser.parse_args()
 
     try:
@@ -73,7 +83,14 @@ def main() -> int:
 
     compute_type = "int8" if args.device == "cpu" else "float16"
     model = WhisperModel(args.model, device=args.device, compute_type=compute_type)
-    segments_iter, info = model.transcribe(args.audio, vad_filter=True)
+
+    transcribe_kwargs: dict = {"vad_filter": True}
+    if args.language:
+        transcribe_kwargs["language"] = args.language
+    if args.initial_prompt:
+        transcribe_kwargs["initial_prompt"] = args.initial_prompt
+
+    segments_iter, info = model.transcribe(args.audio, **transcribe_kwargs)
 
     write_progress(
         progress_path,

@@ -14,6 +14,7 @@ export type LessonStatus = 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED';
 export type LessonPipeline = {
   transcriptionStatus: string | null;
   knowledgeStatus: string | null;
+  knowledgeError: string | null;
   chunkCount: number;
   embeddingCount: number;
   suggestedTitle: string | null;
@@ -36,6 +37,7 @@ export type Lesson = {
   status: LessonStatus;
   topics?: string[];
   videoUrl?: string | null;
+  thumbnailUrl?: string | null;
   pipeline?: LessonPipeline;
 };
 
@@ -268,6 +270,7 @@ function normalizePipeline(raw: unknown): LessonPipeline | undefined {
     transcriptionStatus:
       pick<string>(transcription, ['status']) ?? null,
     knowledgeStatus: pick<string>(knowledge, ['status']) ?? null,
+    knowledgeError: pick<string>(knowledge, ['errorMessage', 'error']) ?? null,
     chunkCount: Number(pick<number>(chunks, ['count']) ?? 0),
     embeddingCount: Number(pick<number>(embeddings, ['count']) ?? 0),
     suggestedTitle: pick<string>(knowledge, ['suggestedTitle']) ?? null,
@@ -330,9 +333,21 @@ function normalizeLesson(raw: unknown): Lesson {
       ) || null,
     status,
     topics: toStringList(pick(o, ['topics', 'tags', 'subjects'])),
-    videoUrl: pick<string>(o, ['videoUrl', 'streamUrl', 'url']) ?? null,
+    videoUrl: absoluteApiUrl(
+      pick<string>(o, ['videoUrl', 'streamUrl', 'url']) ?? null,
+    ),
+    thumbnailUrl: absoluteApiUrl(
+      pick<string>(o, ['thumbnailUrl', 'thumbnail', 'posterUrl']) ?? null,
+    ),
     pipeline,
   };
+}
+
+function absoluteApiUrl(path: string | null): string | null {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path) || path.startsWith('data:')) return path;
+  if (path.startsWith('/')) return `${API_BASE_URL}${path}`;
+  return path;
 }
 
 function normalizeSegment(raw: unknown): TranscriptSegment {
@@ -471,6 +486,51 @@ export const api = {
         pick(nested, ['exercises', 'practice', 'drills']),
       ),
     };
+  },
+
+  enqueueKnowledge: async (id: string): Promise<void> => {
+    await request(`/sources/${id}/knowledge`, { method: 'POST' });
+  },
+
+  enqueueEmbeddings: async (id: string): Promise<void> => {
+    await request(`/sources/${id}/embeddings`, { method: 'POST' });
+  },
+
+  /** Re-run knowledge and/or embeddings after a soft or hard pipeline failure. */
+  retryPipeline: async (lesson: {
+    id: string;
+    status: LessonStatus;
+    pipeline?: LessonPipeline | undefined;
+  }): Promise<void> => {
+    const knowledgeFailed = lesson.pipeline?.knowledgeStatus === 'FAILED';
+    const knowledgeMissing =
+      !lesson.pipeline?.knowledgeStatus ||
+      lesson.pipeline.knowledgeStatus === 'FAILED';
+    const needsEmbeddings =
+      (lesson.pipeline?.embeddingCount ?? 0) === 0 ||
+      lesson.status === 'FAILED';
+
+    if (knowledgeFailed || knowledgeMissing) {
+      await request(`/sources/${lesson.id}/knowledge`, { method: 'POST' });
+      return;
+    }
+    if (needsEmbeddings) {
+      await request(`/sources/${lesson.id}/embeddings`, { method: 'POST' });
+    }
+  },
+
+  updateLesson: async (
+    id: string,
+    input: { title: string },
+  ): Promise<void> => {
+    await request(`/sources/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ originalName: input.title }),
+    });
+  },
+
+  deleteLesson: async (id: string): Promise<void> => {
+    await request(`/sources/${id}`, { method: 'DELETE' });
   },
 
   uploadVideo: async (file: File): Promise<{ id?: string | undefined }> => {

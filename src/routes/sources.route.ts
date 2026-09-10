@@ -8,6 +8,7 @@ import {
   oneDriveStreamQuerySchema,
   previewOneDriveBodySchema,
   sourceIdParamsSchema,
+  updateSourceBodySchema,
   validateZod,
 } from '../http';
 import { errorResponseSchema } from '../http/openapi-schemas';
@@ -119,6 +120,34 @@ export async function sourcesRoute(app: FastifyInstance) {
     (request, reply) => controller.getById(request, reply),
   );
 
+  app.patch(
+    '/sources/:sourceId',
+    {
+      preHandler: validateZod({
+        params: sourceIdParamsSchema,
+        body: updateSourceBodySchema,
+      }),
+      schema: {
+        tags: ['sources'],
+        summary: 'Update source metadata (display name)',
+        response: { 400: errorResponseSchema, 404: errorResponseSchema },
+      },
+    },
+    (request, reply) => controller.update(request, reply),
+  );
+
+  app.delete(
+    '/sources/:sourceId',
+    {
+      ...sourceIdValidation,
+      schema: {
+        ...sourceIdValidation.schema,
+        summary: 'Delete a source and its processing artifacts',
+      },
+    },
+    (request, reply) => controller.remove(request, reply),
+  );
+
   app.get(
     '/sources/:sourceId/status',
     {
@@ -141,6 +170,18 @@ export async function sourcesRoute(app: FastifyInstance) {
       },
     },
     (request, reply) => controller.streamMedia(request, reply),
+  );
+
+  app.get(
+    '/sources/:sourceId/thumbnail',
+    {
+      ...sourceIdValidation,
+      schema: {
+        ...sourceIdValidation.schema,
+        summary: 'Serve a poster frame thumbnail for the source video',
+      },
+    },
+    (request, reply) => controller.streamThumbnail(request, reply),
   );
 
   app.get(

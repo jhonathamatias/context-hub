@@ -110,56 +110,80 @@ export class KnowledgeService {
     source.status = SourceStatus.PROCESSING;
     await sourceRepo.save(source);
 
-    const chunkJob = jobRepo.create({
-      sourceId,
-      stage: ProcessingStage.CHUNK,
-      status: ProcessingJobStatus.RUNNING,
-      startedAt: new Date(),
-      finishedAt: null,
-      errorMessage: null,
+    const existingChunks = await chunkRepo.find({
+      where: { transcriptionId: transcription.id },
+      order: { chunkIndex: 'ASC' },
     });
-    await jobRepo.save(chunkJob);
 
-    let drafts;
-    try {
-      drafts = await withProcessingLog(
-        logger,
-        ProcessingStage.CHUNK,
-        { sourceId, transcriptionId: transcription.id },
-        async () => buildTranscriptChunks(segments),
+    let drafts: Awaited<ReturnType<typeof buildTranscriptChunks>>;
+
+    if (existingChunks.length > 0) {
+      // Reuse chunks on knowledge retry so embeddings stay valid (no Gemini re-embed).
+      drafts = existingChunks.map((chunk) => ({
+        chunkIndex: chunk.chunkIndex,
+        startSeconds: Number(chunk.startSeconds),
+        endSeconds: Number(chunk.endSeconds),
+        text: chunk.text,
+        normalizedText: chunk.normalizedText,
+      }));
+      logger.info(
+        {
+          sourceId,
+          transcriptionId: transcription.id,
+          chunkCount: drafts.length,
+        },
+        'Reusing existing transcript chunks for knowledge extraction',
       );
+    } else {
+      const chunkJob = jobRepo.create({
+        sourceId,
+        stage: ProcessingStage.CHUNK,
+        status: ProcessingJobStatus.RUNNING,
+        startedAt: new Date(),
+        finishedAt: null,
+        errorMessage: null,
+      });
+      await jobRepo.save(chunkJob);
 
-      if (drafts.length === 0) {
-        throw new Error('No chunks could be built from transcription segments');
+      try {
+        drafts = await withProcessingLog(
+          logger,
+          ProcessingStage.CHUNK,
+          { sourceId, transcriptionId: transcription.id },
+          async () => buildTranscriptChunks(segments),
+        );
+
+        if (drafts.length === 0) {
+          throw new Error('No chunks could be built from transcription segments');
+        }
+
+        await chunkRepo.save(
+          drafts.map((draft) =>
+            chunkRepo.create({
+              sourceId,
+              transcriptionId: transcription.id,
+              chunkIndex: draft.chunkIndex,
+              text: draft.text,
+              normalizedText: draft.normalizedText,
+              startSeconds: draft.startSeconds,
+              endSeconds: draft.endSeconds,
+            }),
+          ),
+        );
+
+        chunkJob.status = ProcessingJobStatus.SUCCEEDED;
+        chunkJob.finishedAt = new Date();
+        await jobRepo.save(chunkJob);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        chunkJob.status = ProcessingJobStatus.FAILED;
+        chunkJob.errorMessage = message;
+        chunkJob.finishedAt = new Date();
+        await jobRepo.save(chunkJob);
+        source.status = SourceStatus.FAILED;
+        await sourceRepo.save(source);
+        throw error;
       }
-
-      await chunkRepo.delete({ transcriptionId: transcription.id });
-      await chunkRepo.save(
-        drafts.map((draft) =>
-          chunkRepo.create({
-            sourceId,
-            transcriptionId: transcription.id,
-            chunkIndex: draft.chunkIndex,
-            text: draft.text,
-            normalizedText: draft.normalizedText,
-            startSeconds: draft.startSeconds,
-            endSeconds: draft.endSeconds,
-          }),
-        ),
-      );
-
-      chunkJob.status = ProcessingJobStatus.SUCCEEDED;
-      chunkJob.finishedAt = new Date();
-      await jobRepo.save(chunkJob);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      chunkJob.status = ProcessingJobStatus.FAILED;
-      chunkJob.errorMessage = message;
-      chunkJob.finishedAt = new Date();
-      await jobRepo.save(chunkJob);
-      source.status = SourceStatus.FAILED;
-      await sourceRepo.save(source);
-      throw error;
     }
 
     const attempt =

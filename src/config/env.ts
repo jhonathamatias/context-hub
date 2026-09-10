@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
+import { DEFAULT_MUSICAL_GLOSSARY } from '../transcription/musical-glossary';
 
 const optionalNonEmptyString = z.preprocess(
   (value) => (value === '' || value === undefined ? undefined : value),
@@ -38,9 +39,18 @@ const rawEnvSchema = z.object({
 
   WHISPER_PYTHON_PATH: z.string().min(1).default('/opt/whisper-venv/bin/python'),
   WHISPER_SCRIPT_PATH: z.string().min(1).default('./python/transcribe.py'),
+  /** tiny | base | small | medium | large-v3 | large-v3-turbo | … */
   WHISPER_MODEL: z.string().min(1).default('tiny'),
   WHISPER_DEVICE: z.enum(['cpu', 'cuda']).default('cpu'),
   WHISPER_TIMEOUT_MS: z.coerce.number().int().positive().default(300_000),
+  /** BCP-47 / Whisper language code (e.g. pt). Empty = auto-detect. */
+  WHISPER_LANGUAGE: optionalNonEmptyString,
+  /**
+   * Optional initial_prompt for faster-whisper (musical glossary, etc.).
+   * When omitted, the built-in musical glossary is used.
+   * Set to "-" to disable the prompt entirely.
+   */
+  WHISPER_INITIAL_PROMPT: z.string().optional(),
 
   OPENAI_API_KEY: optionalNonEmptyString,
   OPENAI_BASE_URL: optionalNonEmptyString,
@@ -49,13 +59,21 @@ const rawEnvSchema = z.object({
   GEMINI_API_KEY: optionalNonEmptyString,
   GEMINI_MODEL: z.string().min(1).default('gemini-3.6-flash'),
 
+  OLLAMA_BASE_URL: z.string().min(1).default('http://ollama:11434'),
+  OLLAMA_MODEL: z.string().min(1).default('qwen3:8b'),
+
   /** Central chat LLM used by knowledge extraction + answer generation. */
-  LLM_PROVIDER: z.enum(['openai', 'gemini']).optional(),
+  LLM_PROVIDER: z.enum(['openai', 'gemini', 'ollama']).optional(),
+  LLM_FALLBACK_PROVIDER: z.enum(['openai', 'gemini', 'ollama']).optional(),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
   LLM_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
   LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(8192),
+  /** Max concurrent LLM calls during hierarchical knowledge MAP. */
+  LLM_CONCURRENCY: z.coerce.number().int().positive().max(8).default(1),
 
-  KNOWLEDGE_PROVIDER: z.enum(['openai', 'gemini']).default('openai'),
+  KNOWLEDGE_PROVIDER: z.enum(['openai', 'gemini', 'ollama']).default('openai'),
+  KNOWLEDGE_MAP_MAX_CHUNKS: z.coerce.number().int().positive().default(15),
+  KNOWLEDGE_MAP_MAX_CHARS: z.coerce.number().int().positive().default(12_000),
 
   EMBEDDING_PROVIDER: z.enum(['openai', 'gemini']).default('openai'),
   OPENAI_EMBEDDING_MODEL: z
@@ -93,6 +111,9 @@ export type AppEnv = {
     model: string;
     device: 'cpu' | 'cuda';
     timeoutMs: number;
+    language?: string;
+    /** Resolved initial prompt; undefined means disabled. */
+    initialPrompt?: string;
   };
   openai: {
     apiKey?: string;
@@ -103,13 +124,23 @@ export type AppEnv = {
     apiKey?: string;
     model: string;
   };
+  ollama: {
+    baseUrl: string;
+    model: string;
+  };
   llm: {
-    provider: 'openai' | 'gemini';
+    provider: 'openai' | 'gemini' | 'ollama';
+    fallbackProvider?: 'openai' | 'gemini' | 'ollama';
     timeoutMs: number;
     maxRetries: number;
     maxOutputTokens: number;
+    concurrency: number;
   };
-  knowledgeProvider: 'openai' | 'gemini';
+  knowledgeProvider: 'openai' | 'gemini' | 'ollama';
+  knowledge: {
+    mapMaxChunks: number;
+    mapMaxChars: number;
+  };
   embedding: {
     provider: 'openai' | 'gemini';
     openaiModel: string;
@@ -238,6 +269,22 @@ export function loadEnv(
   }
 
   const llmProvider = raw.LLM_PROVIDER ?? raw.KNOWLEDGE_PROVIDER;
+  const fallbackProvider =
+    raw.LLM_FALLBACK_PROVIDER && raw.LLM_FALLBACK_PROVIDER !== llmProvider
+      ? raw.LLM_FALLBACK_PROVIDER
+      : undefined;
+
+  let whisperInitialPrompt: string | undefined;
+  if (raw.WHISPER_INITIAL_PROMPT === '-') {
+    whisperInitialPrompt = undefined;
+  } else if (
+    raw.WHISPER_INITIAL_PROMPT !== undefined &&
+    raw.WHISPER_INITIAL_PROMPT.trim() !== ''
+  ) {
+    whisperInitialPrompt = raw.WHISPER_INITIAL_PROMPT;
+  } else {
+    whisperInitialPrompt = DEFAULT_MUSICAL_GLOSSARY;
+  }
 
   return {
     nodeEnv: raw.NODE_ENV,
@@ -255,16 +302,28 @@ export function loadEnv(
       model: raw.WHISPER_MODEL,
       device: raw.WHISPER_DEVICE,
       timeoutMs: raw.WHISPER_TIMEOUT_MS,
+      ...(raw.WHISPER_LANGUAGE ? { language: raw.WHISPER_LANGUAGE } : {}),
+      ...(whisperInitialPrompt ? { initialPrompt: whisperInitialPrompt } : {}),
     },
     openai,
     gemini,
+    ollama: {
+      baseUrl: raw.OLLAMA_BASE_URL,
+      model: raw.OLLAMA_MODEL,
+    },
     llm: {
       provider: llmProvider,
+      ...(fallbackProvider ? { fallbackProvider } : {}),
       timeoutMs: raw.LLM_TIMEOUT_MS,
       maxRetries: raw.LLM_MAX_RETRIES,
       maxOutputTokens: raw.LLM_MAX_OUTPUT_TOKENS,
+      concurrency: raw.LLM_CONCURRENCY,
     },
     knowledgeProvider: raw.KNOWLEDGE_PROVIDER,
+    knowledge: {
+      mapMaxChunks: raw.KNOWLEDGE_MAP_MAX_CHUNKS,
+      mapMaxChars: raw.KNOWLEDGE_MAP_MAX_CHARS,
+    },
     embedding,
     jobs: {
       attempts: raw.JOB_ATTEMPTS,
