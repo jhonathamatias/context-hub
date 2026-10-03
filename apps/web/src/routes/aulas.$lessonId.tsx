@@ -209,16 +209,11 @@ function LessonPage() {
           >
             <p>
               {knowledgeFailed
-                ? "Não foi possível gerar o resumo agora. A transcrição e a busca continuam disponíveis quando o índice existir."
+                ? "Não foi possível gerar o resumo agora. A transcrição e a busca continuam disponíveis."
                 : needsSearchIndex
                   ? "A transcrição está pronta, mas o índice de busca ainda não foi gerado."
                   : "Esta aula não pôde ser preparada por completo."}
             </p>
-            {pipeline?.knowledgeError ? (
-              <p className="mt-2 text-xs opacity-80 line-clamp-3">
-                Detalhe: {pipeline.knowledgeError}
-              </p>
-            ) : null}
             {canRetryPipeline ? (
               <div className="mt-3">
                 <Button

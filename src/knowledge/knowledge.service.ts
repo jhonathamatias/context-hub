@@ -16,6 +16,7 @@ import {
 import { withProcessingLog } from '../observability';
 import type { TranscriptionSegment } from '../transcription/types';
 import { buildTranscriptChunks } from './chunking';
+import { toPublicKnowledgeErrorMessage } from './public-error';
 import type { KnowledgeExtractionProvider } from './types';
 
 export const KNOWLEDGE_EXTRACTION_PROVIDER =
@@ -259,7 +260,18 @@ export class KnowledgeService {
         knowledge: knowledge.payloadJson,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const rawMessage = error instanceof Error ? error.message : String(error);
+      const message = toPublicKnowledgeErrorMessage(rawMessage);
+
+      logger.warn(
+        {
+          sourceId,
+          operation: 'knowledge.extract',
+          provider: this.provider.name,
+          err: rawMessage.slice(0, 400),
+        },
+        'Knowledge extraction soft-failed; continuing pipeline',
+      );
 
       // LLM failure must not destroy transcription or persisted chunks.
       knowledge.status = KnowledgeExtractionStatus.FAILED;

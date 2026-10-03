@@ -30,6 +30,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ollama:
+        condition: service_started
 
   worker:
     build:
@@ -57,6 +59,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ollama:
+        condition: service_started
 
   db:
     # pgvector-enabled Postgres (same major as before: 16)

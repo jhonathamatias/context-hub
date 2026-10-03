@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { groupTranscriptSegments } from '../transcription/group-presentation-segments';
-import { DEFAULT_MUSICAL_GLOSSARY } from '../transcription/musical-glossary';
+import { groupTranscriptSegments } from './group-presentation-segments';
+import {
+  DEFAULT_MUSICAL_GLOSSARY,
+  resolveWhisperInitialPrompt,
+} from './musical-glossary';
 
 describe('groupTranscriptSegments', () => {
   it('groups consecutive short segments into ~20–40s blocks', () => {
@@ -46,5 +49,31 @@ describe('DEFAULT_MUSICAL_GLOSSARY', () => {
     assert.match(DEFAULT_MUSICAL_GLOSSARY, /pentatônica/i);
     assert.match(DEFAULT_MUSICAL_GLOSSARY, /CAGED/);
     assert.match(DEFAULT_MUSICAL_GLOSSARY, /mixolídio/i);
+  });
+});
+
+describe('resolveWhisperInitialPrompt', () => {
+  it('uses default glossary when nothing is set', () => {
+    assert.equal(resolveWhisperInitialPrompt({}), DEFAULT_MUSICAL_GLOSSARY);
+  });
+
+  it('appends glossary extra to the default', () => {
+    const prompt = resolveWhisperInitialPrompt({ glossaryExtra: 'bebop ii-V-I' });
+    assert.match(prompt!, /pentatônica/i);
+    assert.match(prompt!, /bebop/);
+  });
+
+  it('full override replaces the default', () => {
+    assert.equal(
+      resolveWhisperInitialPrompt({ initialPrompt: 'custom only' }),
+      'custom only',
+    );
+  });
+
+  it('disables prompt when initialPrompt is "-"', () => {
+    assert.equal(
+      resolveWhisperInitialPrompt({ initialPrompt: '-', glossaryExtra: 'x' }),
+      undefined,
+    );
   });
 });

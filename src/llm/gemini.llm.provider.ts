@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Service } from 'typedi';
 import { env } from '../config/env';
 import { withControlledRetries } from './retry';
+import { withNormalizedProviderErrors } from './normalize-provider-error';
 import type {
   LlmGenerateJsonInput,
   LlmGenerateJsonResult,
@@ -56,19 +57,20 @@ export class GeminiLlmProvider implements LlmProvider {
 
     const startedAt = Date.now();
     const { value, attempts } = await withControlledRetries(
-      async () => {
-        const result = await withTimeout(
-          model.generateContent(
-            input.messages.map((message) => ({ text: message.content })),
-          ),
-          env.llm.timeoutMs,
-        );
-        const content = result.response.text();
-        if (!content) {
-          throw new Error('Gemini returned an empty JSON response');
-        }
-        return content;
-      },
+      async () =>
+        withNormalizedProviderErrors(async () => {
+          const result = await withTimeout(
+            model.generateContent(
+              input.messages.map((message) => ({ text: message.content })),
+            ),
+            env.llm.timeoutMs,
+          );
+          const content = result.response.text();
+          if (!content) {
+            throw new Error('Gemini returned an empty JSON response');
+          }
+          return content;
+        }),
       { maxRetries: env.llm.maxRetries, baseDelayMs: 1_000 },
     );
 

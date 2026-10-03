@@ -1,6 +1,7 @@
 /**
  * Default musical vocabulary for Whisper initial_prompt.
- * Extensible via WHISPER_INITIAL_PROMPT (full override) — never blind string replace.
+ * Extend via WHISPER_GLOSSARY_EXTRA (append) or WHISPER_INITIAL_PROMPT (full override).
+ * Never use blind string substitutions on transcript text.
  */
 export const DEFAULT_MUSICAL_GLOSSARY = [
   'Glossário musical para aula de guitarra:',
@@ -12,3 +13,27 @@ export const DEFAULT_MUSICAL_GLOSSARY = [
   'dórico frígio mixolídio lídio lócrio',
   'improvisação fraseado',
 ].join(' ');
+
+/**
+ * Resolve Whisper initial_prompt from env-shaped inputs.
+ * - initialPrompt "-" → disabled (undefined)
+ * - initialPrompt set → full override
+ * - else default glossary + optional extra append
+ */
+export function resolveWhisperInitialPrompt(input: {
+  initialPrompt?: string | undefined;
+  glossaryExtra?: string | undefined;
+}): string | undefined {
+  if (input.initialPrompt === '-') {
+    return undefined;
+  }
+  if (input.initialPrompt !== undefined && input.initialPrompt.trim() !== '') {
+    return input.initialPrompt;
+  }
+
+  const extra = input.glossaryExtra?.trim();
+  if (extra) {
+    return `${DEFAULT_MUSICAL_GLOSSARY} ${extra}`;
+  }
+  return DEFAULT_MUSICAL_GLOSSARY;
+}

@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
-import { DEFAULT_MUSICAL_GLOSSARY } from '../transcription/musical-glossary';
+import { resolveWhisperInitialPrompt } from '../transcription/musical-glossary';
 
 const optionalNonEmptyString = z.preprocess(
   (value) => (value === '' || value === undefined ? undefined : value),
@@ -35,7 +35,7 @@ const rawEnvSchema = z.object({
     .number()
     .int()
     .positive()
-    .default(500 * 1024 * 1024),
+    .default(1000 * 1024 * 1024), 
 
   WHISPER_PYTHON_PATH: z.string().min(1).default('/opt/whisper-venv/bin/python'),
   WHISPER_SCRIPT_PATH: z.string().min(1).default('./python/transcribe.py'),
@@ -47,10 +47,13 @@ const rawEnvSchema = z.object({
   WHISPER_LANGUAGE: optionalNonEmptyString,
   /**
    * Optional initial_prompt for faster-whisper (musical glossary, etc.).
-   * When omitted, the built-in musical glossary is used.
+   * When omitted, the built-in musical glossary is used (+ WHISPER_GLOSSARY_EXTRA).
    * Set to "-" to disable the prompt entirely.
+   * Set to a non-empty string to fully replace the default glossary.
    */
   WHISPER_INITIAL_PROMPT: z.string().optional(),
+  /** Appended to the default musical glossary when WHISPER_INITIAL_PROMPT is omitted. */
+  WHISPER_GLOSSARY_EXTRA: z.string().optional(),
 
   OPENAI_API_KEY: optionalNonEmptyString,
   OPENAI_BASE_URL: optionalNonEmptyString,
@@ -274,17 +277,10 @@ export function loadEnv(
       ? raw.LLM_FALLBACK_PROVIDER
       : undefined;
 
-  let whisperInitialPrompt: string | undefined;
-  if (raw.WHISPER_INITIAL_PROMPT === '-') {
-    whisperInitialPrompt = undefined;
-  } else if (
-    raw.WHISPER_INITIAL_PROMPT !== undefined &&
-    raw.WHISPER_INITIAL_PROMPT.trim() !== ''
-  ) {
-    whisperInitialPrompt = raw.WHISPER_INITIAL_PROMPT;
-  } else {
-    whisperInitialPrompt = DEFAULT_MUSICAL_GLOSSARY;
-  }
+  const whisperInitialPrompt = resolveWhisperInitialPrompt({
+    initialPrompt: raw.WHISPER_INITIAL_PROMPT,
+    glossaryExtra: raw.WHISPER_GLOSSARY_EXTRA,
+  });
 
   return {
     nodeEnv: raw.NODE_ENV,

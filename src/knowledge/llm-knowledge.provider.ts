@@ -48,6 +48,17 @@ export class LlmKnowledgeExtractionProvider
       mapMaxChunks: env.knowledge.mapMaxChunks,
       mapMaxChars: env.knowledge.mapMaxChars,
       store: createDiskPartialStore(input.sourceId),
+      onLog: (fields, message) => {
+        // Structured MAP/REDUCE observability (no transcript body / API keys).
+        console.info(
+          JSON.stringify({
+            level: 'info',
+            msg: message,
+            sourceId: input.sourceId,
+            ...fields,
+          }),
+        );
+      },
     });
   }
 }
