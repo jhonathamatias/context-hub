@@ -234,6 +234,20 @@ export async function sourcesRoute(app: FastifyInstance) {
   );
 
   app.post(
+    '/sources/:sourceId/multimodal',
+    {
+      ...sourceIdValidation,
+      schema: {
+        tags: ['sources'],
+        summary:
+          'Run Gemini multimodal video analysis for a source (POC; skips Whisper)',
+        response: { 400: errorResponseSchema },
+      },
+    },
+    (request, reply) => controller.enqueueMultimodal(request, reply),
+  );
+
+  app.post(
     '/sources/:sourceId/embeddings',
     {
       ...sourceIdValidation,

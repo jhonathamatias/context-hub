@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 const styles: Record<Status, string> = {
   READY: "bg-success/10 text-success border-success/20",
-  PROCESSING: "bg-warning/15 text-warning-foreground border-warning/30",
+  PROCESSING: "bg-primary/12 text-primary border-primary/25",
   PENDING: "bg-muted text-muted-foreground border-border",
   FAILED: "bg-destructive/10 text-destructive border-destructive/20",
 };

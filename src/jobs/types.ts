@@ -4,6 +4,7 @@ export const JobName = {
   VideoExtract: 'video.extract',
   TranscriptionRun: 'transcription.run',
   KnowledgeExtract: 'knowledge.extract',
+  MultimodalAnalyze: 'multimodal.analyze',
   EmbeddingsGenerate: 'embeddings.generate',
   SourceIndex: 'source.index',
 } as const;
@@ -19,6 +20,7 @@ export const ALL_JOB_NAMES: JobName[] = [
   JobName.VideoExtract,
   JobName.TranscriptionRun,
   JobName.KnowledgeExtract,
+  JobName.MultimodalAnalyze,
   JobName.EmbeddingsGenerate,
   JobName.SourceIndex,
 ];

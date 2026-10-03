@@ -54,7 +54,7 @@ export class SourcesController {
         logger: request.log,
       });
 
-      await this.jobs.enqueueVideoExtract(accepted.sourceId);
+      await this.jobs.enqueuePostIngest(accepted.sourceId);
 
       return reply.status(202).send(toPublicAcceptResult(accepted));
     } catch (error) {
@@ -70,7 +70,7 @@ export class SourcesController {
       request.log,
     );
 
-    await this.jobs.enqueueVideoExtract(accepted.sourceId);
+    await this.jobs.enqueuePostIngest(accepted.sourceId);
 
     return reply.status(202).send(toPublicAcceptResult(accepted));
   }
@@ -316,6 +316,14 @@ export class SourcesController {
     const { sourceId } = getParams<SourceIdParams>(request);
     await this.sourceLifecycle.markProcessing(sourceId);
     const queued = await this.jobs.enqueueKnowledge(sourceId);
+    return reply.status(202).send(toPublicQueuedResult(queued));
+  }
+
+  async enqueueMultimodal(request: FastifyRequest, reply: FastifyReply) {
+    const { sourceId } = getParams<SourceIdParams>(request);
+    await this.sourceQuery.getById(sourceId);
+    await this.sourceLifecycle.markProcessing(sourceId);
+    const queued = await this.jobs.enqueueMultimodalAnalyze(sourceId);
     return reply.status(202).send(toPublicQueuedResult(queued));
   }
 

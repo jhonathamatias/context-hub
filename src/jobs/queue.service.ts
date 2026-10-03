@@ -1,6 +1,7 @@
 import { Queue, type ConnectionOptions, type JobsOptions } from 'bullmq';
 import { Service } from 'typedi';
 import { env } from '../config/env';
+import { isMultimodalPipeline } from '../video-knowledge/pipeline';
 import { JobName, type SourceJobPayload } from './types';
 
 const DEFAULT_JOB_OPTIONS: JobsOptions = {
@@ -83,12 +84,24 @@ export class JobQueueService {
     return this.enqueue(JobName.VideoExtract, { sourceId });
   }
 
+  /** First stage after the video file is on disk (legacy extract vs multimodal). */
+  async enqueuePostIngest(sourceId: string) {
+    if (isMultimodalPipeline(env.videoProcessor)) {
+      return this.enqueue(JobName.MultimodalAnalyze, { sourceId }, { force: true });
+    }
+    return this.enqueueVideoExtract(sourceId);
+  }
+
   async enqueueTranscription(sourceId: string) {
     return this.enqueue(JobName.TranscriptionRun, { sourceId }, { force: true });
   }
 
   async enqueueKnowledge(sourceId: string) {
     return this.enqueue(JobName.KnowledgeExtract, { sourceId }, { force: true });
+  }
+
+  async enqueueMultimodalAnalyze(sourceId: string) {
+    return this.enqueue(JobName.MultimodalAnalyze, { sourceId }, { force: true });
   }
 
   async enqueueEmbeddings(sourceId: string) {

@@ -173,20 +173,24 @@ function PipelineSteps({
 export function ProcessingIndicator({
   compact = false,
   progress,
+  note,
+  showSteps = true,
   className,
 }: {
   compact?: boolean;
   progress?: Progress | null;
+  /** Quiet secondary line (e.g. multimodal analysis hint). */
+  note?: string | null;
+  /** Pipeline step chips — hide for multimodal to avoid Whisper-step noise. */
+  showSteps?: boolean;
   className?: string;
 }) {
   const percent = Math.round(progress?.percent ?? 0);
   const stage = progress?.stage ?? "TRANSCRIBE";
   const label = progress?.label ?? "Preparando aula";
-  const detail = secondaryDetail(
-    stage,
-    progress,
-    progress?.detail ?? null,
-  );
+  const detail =
+    note?.trim() ||
+    secondaryDetail(stage, progress, progress?.detail ?? null);
 
   if (compact) {
     return (
@@ -208,9 +212,11 @@ export function ProcessingIndicator({
             {detail}
           </p>
         ) : null}
-        <div className="mt-2">
-          <PipelineSteps stage={stage} percent={percent} compact />
-        </div>
+        {showSteps ? (
+          <div className="mt-2">
+            <PipelineSteps stage={stage} percent={percent} compact />
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -243,9 +249,11 @@ export function ProcessingIndicator({
         />
       </div>
 
-      <div className="mt-3">
-        <PipelineSteps stage={stage} percent={percent} />
-      </div>
+      {showSteps ? (
+        <div className="mt-3">
+          <PipelineSteps stage={stage} percent={percent} />
+        </div>
+      ) : null}
     </section>
   );
 }

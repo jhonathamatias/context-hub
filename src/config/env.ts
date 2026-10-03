@@ -61,6 +61,11 @@ const rawEnvSchema = z.object({
 
   GEMINI_API_KEY: optionalNonEmptyString,
   GEMINI_MODEL: z.string().min(1).default('gemini-3.6-flash'),
+  /** Model used for multimodal video analysis (POC). */
+  GEMINI_VIDEO_MODEL: z.string().min(1).default('gemini-3.8-flash'),
+
+  /** Pipeline after video is on disk: Whisper legacy vs Gemini multimodal POC. */
+  VIDEO_PROCESSOR: z.enum(['legacy', 'multimodal']).default('legacy'),
 
   OLLAMA_BASE_URL: z.string().min(1).default('http://ollama:11434'),
   OLLAMA_MODEL: z.string().min(1).default('qwen3:8b'),
@@ -126,7 +131,9 @@ export type AppEnv = {
   gemini: {
     apiKey?: string;
     model: string;
+    videoModel: string;
   };
+  videoProcessor: 'legacy' | 'multimodal';
   ollama: {
     baseUrl: string;
     model: string;
@@ -256,6 +263,7 @@ export function loadEnv(
 
   const gemini: AppEnv['gemini'] = {
     model: raw.GEMINI_MODEL,
+    videoModel: raw.GEMINI_VIDEO_MODEL,
   };
   if (raw.GEMINI_API_KEY !== undefined) {
     gemini.apiKey = raw.GEMINI_API_KEY;
@@ -303,6 +311,7 @@ export function loadEnv(
     },
     openai,
     gemini,
+    videoProcessor: raw.VIDEO_PROCESSOR,
     ollama: {
       baseUrl: raw.OLLAMA_BASE_URL,
       model: raw.OLLAMA_MODEL,

@@ -492,6 +492,11 @@ export const api = {
     await request(`/sources/${id}/knowledge`, { method: 'POST' });
   },
 
+  /** POC: Gemini multimodal video analysis (skips Whisper). */
+  enqueueMultimodal: async (id: string): Promise<void> => {
+    await request(`/sources/${id}/multimodal`, { method: 'POST' });
+  },
+
   enqueueEmbeddings: async (id: string): Promise<void> => {
     await request(`/sources/${id}/embeddings`, { method: 'POST' });
   },

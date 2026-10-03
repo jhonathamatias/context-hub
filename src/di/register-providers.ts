@@ -27,6 +27,10 @@ import {
   LocalWhisperTranscriptionProvider,
   TRANSCRIPTION_PROVIDER,
 } from '../transcription';
+import {
+  GeminiVideoKnowledgeProvider,
+  VIDEO_KNOWLEDGE_PROVIDER,
+} from '../video-knowledge';
 
 function resolveLlmProvider(
   name: 'openai' | 'gemini' | 'ollama',
@@ -76,6 +80,10 @@ export function registerDomainProviders(logger?: FastifyBaseLogger): void {
     Container.get(LlmKnowledgeExtractionProvider),
   );
   Container.set(
+    VIDEO_KNOWLEDGE_PROVIDER,
+    Container.get(GeminiVideoKnowledgeProvider),
+  );
+  Container.set(
     EMBEDDING_PROVIDER,
     env.embedding.provider === 'gemini'
       ? Container.get(GeminiEmbeddingProvider)
@@ -85,6 +93,14 @@ export function registerDomainProviders(logger?: FastifyBaseLogger): void {
   Container.set(
     ANSWER_GENERATION_PROVIDER,
     Container.get(LlmAnswerGenerationProvider),
+  );
+
+  logger?.info(
+    {
+      videoProcessor: env.videoProcessor,
+      geminiVideoModel: env.gemini.videoModel,
+    },
+    'Video processor pipeline selected',
   );
 
   logger?.info(

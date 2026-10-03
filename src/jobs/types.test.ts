@@ -9,6 +9,7 @@ describe('job names', () => {
       JobName.VideoExtract,
       JobName.TranscriptionRun,
       JobName.KnowledgeExtract,
+      JobName.MultimodalAnalyze,
       JobName.EmbeddingsGenerate,
       JobName.SourceIndex,
     ]);

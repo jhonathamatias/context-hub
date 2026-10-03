@@ -8,6 +8,7 @@ export {
   JobName,
   type SourceJobPayload,
 } from './types';
+export { MultimodalKnowledgeJobHandler } from './handlers/multimodal-knowledge.handler';
 export { EmbeddingsGenerateJobHandler } from './handlers/embeddings-generate.handler';
 export { KnowledgeExtractJobHandler } from './handlers/knowledge-extract.handler';
 export { SourceIndexJobHandler } from './handlers/source-index.handler';

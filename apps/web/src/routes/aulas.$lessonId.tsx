@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, Sparkles, Clapperboard } from "lucide-react";
 import { api } from "@/lib/api";
 import { groupTranscriptSegments } from "@/lib/group-transcript-segments";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,8 @@ function LessonPage() {
   const [tab, setTab] = useState<Tab>("resumo");
   const [currentTime, setCurrentTime] = useState(t ?? 0);
   const [seekApplied, setSeekApplied] = useState(false);
+  const [multimodalQueued, setMultimodalQueued] = useState(false);
+  const multimodalSawBusyRef = useRef(false);
   const queryClient = useQueryClient();
 
   const lesson = useQuery({
@@ -107,6 +109,50 @@ function LessonPage() {
     },
   });
 
+  const runMultimodal = useMutation({
+    mutationFn: () => api.enqueueMultimodal(lessonId),
+    onMutate: () => {
+      multimodalSawBusyRef.current = false;
+      setMultimodalQueued(true);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["lesson", lessonId] });
+      await queryClient.invalidateQueries({ queryKey: ["knowledge", lessonId] });
+      await queryClient.invalidateQueries({ queryKey: ["transcript", lessonId] });
+      await queryClient.invalidateQueries({ queryKey: ["lessons"] });
+    },
+    onError: () => {
+      multimodalSawBusyRef.current = false;
+      setMultimodalQueued(false);
+    },
+  });
+
+  // Keep local busy until the server has entered PROCESSING at least once, then clear
+  // when it leaves. Never clear on the stale READY snapshot still in cache after click.
+  useEffect(() => {
+    if (!multimodalQueued) {
+      multimodalSawBusyRef.current = false;
+      return;
+    }
+    const status = lesson.data?.status;
+    const knowledgeStatus = lesson.data?.pipeline?.knowledgeStatus;
+    const serverBusy =
+      status === "PROCESSING" ||
+      status === "PENDING" ||
+      knowledgeStatus === "PROCESSING";
+    if (serverBusy) {
+      multimodalSawBusyRef.current = true;
+      return;
+    }
+    if (multimodalSawBusyRef.current) {
+      setMultimodalQueued(false);
+    }
+  }, [
+    multimodalQueued,
+    lesson.data?.status,
+    lesson.data?.pipeline?.knowledgeStatus,
+  ]);
+
   const seek = (seconds: number) => {
     setCurrentTime(seconds);
     playerRef.current?.seekTo(seconds);
@@ -143,14 +189,20 @@ function LessonPage() {
     data.status === "PROCESSING" ||
     data.status === "PENDING" ||
     knowledgeProcessing;
+  const multimodalBusy =
+    runMultimodal.isPending || multimodalQueued || knowledgeProcessing;
   const showProcessIndicator =
     isProcessing ||
+    multimodalQueued ||
     (pipeline?.progress?.stage != null &&
       pipeline.progress.stage !== "DONE" &&
       pipeline.progress.percent < 100);
   const meta = [formatDate(data.createdAt ?? data.updatedAt), formatDuration(data.durationSeconds)]
     .filter(Boolean)
     .join(" · ");
+
+  const displayStatus =
+    multimodalBusy && data.status !== "FAILED" ? "PROCESSING" : data.status;
 
   return (
     <PageFrame width={PageFrameWidth.Full}>
@@ -166,32 +218,79 @@ function LessonPage() {
           <h1 className="display-title text-xl leading-tight sm:text-3xl">{data.title}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <LessonStatus
-              status={data.status}
-              percent={pipeline?.progress?.percent}
+              status={displayStatus}
+              percent={
+                showProcessIndicator ? null : pipeline?.progress?.percent
+              }
             />
             {meta ? <span className="text-sm text-muted-foreground">{meta}</span> : null}
           </div>
         </div>
-        {isProcessing ? (
-          <Button className="shrink-0" disabled>
-            <Sparkles className="size-4" />
-            <span className="hidden sm:inline">Disponível em breve</span>
-            <span className="sm:hidden">Aguarde</span>
-          </Button>
-        ) : (
-          <Button asChild className="shrink-0">
-            <Link to="/perguntar" search={{ aula: lessonId }}>
+        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+          {!multimodalBusy ? (
+            <Button
+              type="button"
+              variant="secondary"
+              className="shrink-0"
+              disabled={runMultimodal.isPending}
+              onClick={() => runMultimodal.mutate()}
+            >
+              <Clapperboard className="size-4" />
+              <span className="hidden sm:inline">Analisar vídeo (Gemini)</span>
+              <span className="sm:hidden">Gemini vídeo</span>
+            </Button>
+          ) : null}
+          {multimodalBusy ? (
+            <Button type="button" className="shrink-0" disabled>
               <Sparkles className="size-4" />
               <span className="hidden sm:inline">Usar IA nesta aula</span>
               <span className="sm:hidden">Usar IA</span>
-            </Link>
-          </Button>
-        )}
+            </Button>
+          ) : (
+            <Button asChild className="shrink-0">
+              <Link to="/perguntar" search={{ aula: lessonId }}>
+                <Sparkles className="size-4" />
+                <span className="hidden sm:inline">Usar IA nesta aula</span>
+                <span className="sm:hidden">Usar IA</span>
+              </Link>
+            </Button>
+          )}
+        </div>
       </header>
+
+      {runMultimodal.isError ? (
+        <FeedbackAlert tone="destructive" title="Falha ao iniciar análise" className="mt-4">
+          <p>
+            {runMultimodal.error instanceof Error
+              ? runMultimodal.error.message
+              : "Não foi possível iniciar a análise multimodal."}
+          </p>
+        </FeedbackAlert>
+      ) : null}
 
       {showProcessIndicator ? (
         <div className="mt-5">
-          <ProcessingIndicator progress={pipeline?.progress} />
+          <ProcessingIndicator
+            progress={
+              multimodalBusy
+                ? {
+                    percent: pipeline?.progress?.percent ?? 90,
+                    stage: pipeline?.progress?.stage ?? "EXTRACT_KNOWLEDGE",
+                    label: "Analisando vídeo com Gemini",
+                    detail: null,
+                    transcriptionPercent:
+                      pipeline?.progress?.transcriptionPercent ?? null,
+                    ingestPercent: pipeline?.progress?.ingestPercent ?? null,
+                  }
+                : pipeline?.progress
+            }
+            note={
+              multimodalBusy
+                ? "Áudio e imagem · costuma levar alguns minutos"
+                : null
+            }
+            showSteps={!multimodalBusy}
+          />
         </div>
       ) : null}
 
