@@ -64,7 +64,9 @@ async function main(): Promise<void> {
       error?: string;
     }> = [];
 
-    for (const clip of [...artifact.clips].sort((a, b) => a.rank - b.rank)) {
+    const sorted = [...artifact.clips].sort((a, b) => a.rank - b.rank);
+    for (let i = 0; i < sorted.length; i++) {
+      const clip = sorted[i]!;
       const windowSegs = segmentsInWindow(
         segments,
         clip.startSeconds,
@@ -98,6 +100,10 @@ async function main(): Promise<void> {
           analysis: null,
           error: error instanceof Error ? error.message : String(error),
         });
+      }
+      // Space requests to reduce 503 spikes on free tier.
+      if (i < sorted.length - 1) {
+        await new Promise((r) => setTimeout(r, 8_000));
       }
     }
 
@@ -152,6 +158,40 @@ async function loadWhisperSegments(
   database: DatabaseService,
   sourceId: string,
 ): Promise<TranscriptionSegment[]> {
+  const fromDb = await loadWhisperFromDb(database, sourceId);
+  if (fromDb.length) return fromDb;
+
+  const fromFile = await loadWhisperFromStorage(sourceId);
+  if (fromFile.length) return fromFile;
+
+  /**
+   * Top3 windows are hard-coded from the ranking POC (Talisson).
+   * Remote OneDrive source may lack Whisper — allow explicit baseline
+   * via POC_WHISPER_SOURCE_ID, else the ranking source.
+   */
+  const baselineId =
+    process.env.POC_WHISPER_SOURCE_ID?.trim() ||
+    '5fe720dc-d4a4-42dd-81be-f236a3eea095';
+  if (baselineId !== sourceId) {
+    console.error(
+      `No Whisper for ${sourceId}; using baseline ${baselineId} for Top3 window transcripts`,
+    );
+    const baselineDb = await loadWhisperFromDb(database, baselineId);
+    if (baselineDb.length) return baselineDb;
+    const baselineFile = await loadWhisperFromStorage(baselineId);
+    if (baselineFile.length) return baselineFile;
+  }
+
+  throw new Error(
+    `No Whisper segments for ${sourceId}` +
+      (baselineId !== sourceId ? ` (nor baseline ${baselineId})` : ''),
+  );
+}
+
+async function loadWhisperFromDb(
+  database: DatabaseService,
+  sourceId: string,
+): Promise<TranscriptionSegment[]> {
   const row = await database.getRepository(Transcription).findOne({
     where: {
       sourceId,
@@ -160,27 +200,26 @@ async function loadWhisperSegments(
     },
     order: { createdAt: 'DESC' },
   });
-  if (!row?.segmentsJson?.length) {
-    // Fallback: storage file
-    const path = join(
-      env.storageDir,
-      'sources',
-      sourceId,
-      'transcription.json',
-    );
-    const raw = JSON.parse(await readFile(path, 'utf8')) as {
-      segments?: TranscriptionSegment[];
-    };
-    if (!raw.segments?.length) {
-      throw new Error(`No Whisper segments for ${sourceId}`);
-    }
-    return raw.segments;
-  }
+  if (!row?.segmentsJson?.length) return [];
   return row.segmentsJson.map((s) => ({
     startSeconds: s.startSeconds,
     endSeconds: s.endSeconds,
     text: s.text,
   }));
+}
+
+async function loadWhisperFromStorage(
+  sourceId: string,
+): Promise<TranscriptionSegment[]> {
+  const path = join(env.storageDir, 'sources', sourceId, 'transcription.json');
+  try {
+    const raw = JSON.parse(await readFile(path, 'utf8')) as {
+      segments?: TranscriptionSegment[];
+    };
+    return raw.segments?.length ? raw.segments : [];
+  } catch {
+    return [];
+  }
 }
 
 void main().catch((error) => {

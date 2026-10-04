@@ -13,7 +13,7 @@ Data: 2026-10-04.
 | # | Pergunta | Resposta nesta execução |
 |---|----------|-------------------------|
 | 1 | Conseguimos extrair Top 3 do OneDrive via remote seek sem baixar o arquivo inteiro? | **YES** — CDN OneDrive real (`my.microsoftpersonalcontent.com`), Range 206, **14.59%** dos bytes do arquivo (~231 MB de ~1.58 GB). |
-| 2 | Top 3 multimodais produzem info visual nova vs transcript? | **Ainda pendente** — Gemini free tier 429. Clips remotos já extraídos; Phase 2 pode rerodar sem re-baixar. |
+| 2 | Top 3 multimodais produzem info visual nova vs transcript? | **YES (com nuance)** — 3/3 clips: `losesImportantInfoWithoutVideo=true`; findings classificados `NEW_VISUAL_INFORMATION` (shapes/região do braço). Não retornou casas numéricas concretas. |
 
 ---
 
@@ -74,37 +74,29 @@ Artifact Phase 1 (remote OK):
 
 ---
 
-## B. Multimodal
+## B. Multimodal (Phase 2 OK)
 
 ```text
-Status: BLOCKED — Gemini 429 free tier (20 req/day, gemini-3.8-flash)
-Retry delay reported: ~20h51m
+Status: OK
+Model: gemini-3.1-flash-lite (POC clips; 3.8-flash estava em 503 / JSON truncado)
+Source clips: remote OneDrive Top3 (2913adff-…)
+Whisper baseline: 5fe720dc (Top3 windows hard-coded do ranking; source remoto sem Whisper)
+Artifact: …/1791083496437/phase2.json
 ```
 
-Clips remotos estão no disco; Phase 2 pode rerodar sem re-extrair / sem token:
+### Por clip
 
-```bash
-docker compose exec -T node pnpm poc:multimodal-clips 2913adff-2332-40fb-9303-6c23eda1f463
-```
+| Clip | Window | Findings (NEW_VISUAL) | Loses w/o video | Tokens | Duration |
+|------|--------|----------------------|-----------------|--------|----------|
+| 1 | 36:39→37:33 | 2 — C7 shapes higher/lower frets | **true** | 5658 | 34s |
+| 2 | 31:57→32:19 | 3 — chord shapes lower/mid/higher neck | **true** | 3307 | 22s |
+| 3 | 32:35→32:57 | 2 — fingering + fretboard movement | **true** | 3426 | 19s |
 
-### Transcripts capturados (para revisão / próximo run)
+**Clip 1 highlights:** C7 shape on higher frets (teacher) vs different C7 on lower frets (student).  
+**Clip 2 highlights:** positions on two guitars + octave hand shift.  
+**Clip 3 highlights:** left-hand fingering pattern + movement along neck.
 
-**Clip 1 (36:39–37:33)** — score 7  
-> “…olha só está vendo… parte de baixo… alternativas de acordes… C7… dessa forma… esse formato… mesmo desenho… corda lá… tirar essa terça… nona”
-
-**Clip 2 (31:57–32:19)** — score 5  
-> “…ficar só nessa região… soar o mesmo acorde em todo o braço… oitava… nesse dó…”
-
-**Clip 3 (32:35–32:57)** — score 5  
-> “…lance de penta… dó 7 nesse formato… tônica… sétima… sexta…”
-
-Já no transcript há linguagem espacial (região, braço, formato, desenho). A pergunta 2 exige o multimodal para saber se a **imagem** adiciona casas/shapes/digitação concretas — ainda pendente.
-
-| Clip | Multimodal findings | New visual info | Tokens | Duration |
-|------|---------------------|-----------------|--------|----------|
-| 1 | FAILED 429 | n/a | n/a | n/a |
-| 2 | FAILED 429 | n/a | n/a | n/a |
-| 3 | FAILED 429 | n/a | n/a | n/a |
+Nuance: findings são qualitativos (região/shape), **sem casas numéricas** tipo “casa 8”. Transcript já falava “formato/região/braço”; o multimodal confirma e ancora no que se *vê* (dois shapes C7, mid-neck Ibanez, shift de oitava).
 
 ---
 
@@ -115,9 +107,11 @@ Full video duration: ~69m52s (mesmo ranking Top 3; fonte OneDrive 1.58 GB)
 Top 3 duration: ~1m38s (98s)
 
 Full-video baseline tokens: ~410k (video1240787473 full multimodal anterior)
-Top-3 tokens: NOT MEASURED (quota)
-Token ratio: n/a
-Token reduction: n/a
+Top-3 tokens: 12,391
+Token ratio vs 410k: 3.02%
+Token reduction vs 410k: ~97.0%
+Token ratio vs 384k: 3.23%
+Token reduction vs 384k: ~96.8%
 
 Original file bytes: 1,585,633,066
 Transferred bytes for Top3 extraction (OneDrive CDN): 231,292,928
@@ -127,37 +121,38 @@ Clip output ratio: 2.80%
 
 ---
 
-## D. Avaliação qualitativa (parcial)
+## D. Avaliação qualitativa
 
-1. **Clips com info visual nova?** — Indeterminado (sem multimodal).
-2. **O que Whisper perde?** — Indeterminado; transcript já cita região/formato/desenho.
-3. **Invenção multimodal?** — n/a
-4. **Resolução suficiente?** — Clips remotos ~44 MB total (`-c copy`); Gemini não viu ainda.
-5. **Timestamps absolutos?** — Conversão implementada; não exercitada sem findings.
-6. **Ranker escolheu bons trechos?** — Transcripts dos Top 3 são fortemente espaciais → ranking parece correto a priori.
-7. **#1 score 7 justificou o topo?** — Transcript mais rico (formato/desenho/C7/direções) → sim como hipótese.
-8. **Remote seek evitou download completo?** — **YES** no OneDrive real (14.59% transferidos). Simulação local anterior era enganosa (142%).
-9. **Maior gargalo agora?** — Cota Gemini (Phase 2). Auth OneDrive só precisa de token temporário por run.
-10. **Avançar Top 5 / HIGH?** — **Não** até Phase 2 responder valor visual.
+1. **Clips com info visual nova?** — **Sim** (3/3 `NEW_VISUAL_INFORMATION`; `losesImportantInfoWithoutVideo=true`). Granularidade média (sem nº de casa).
+2. **O que Whisper perde?** — Digitização/shapes concretos e *qual* região do braço está sendo mostrada no momento; fala só “dessa forma / nessa região”.
+3. **Invenção multimodal?** — Baixo risco aparente (sem frets inventados); clip 3 summary menciona “slowing down a video” (possível ruído).
+4. **Resolução suficiente?** — Sim para shapes/região com `-c copy` remoto.
+5. **Timestamps absolutos?** — Implementados; modelo quase sempre devolveu só início relativo (~0s).
+6. **Ranker escolheu bons trechos?** — Sim — todos os Top 3 renderam valor visual.
+7. **#1 score 7 justificou o topo?** — Sim (C7 shapes distintos teacher/student; mais tokens e findings ricos).
+8. **Remote seek evitou download completo?** — **YES** (14.59%).
+9. **Maior gargalo residual?** — 503/`gemini-3.8-flash` flaky; clip seek overhead (clip3 ~114 MB/22s); Whisper ausente no source remoto.
+10. **Avançar Top 5 / HIGH?** — Opcional; Top 3 já prova tese. Só expandir se product precisar cobertura.
 
 ---
 
 ## E. Decisão
 
 ```text
-ITERATE
+GO
 ```
 
 ### Justificativa
 
-1. **Parte A (transferência):** **GO parcial** — remote seek OneDrive comprovado: Range 206 no CDN, **14.59%** dos bytes, full download avoided YES. Simulação local (142%) não representa o CDN.
-2. **Parte B (valor multimodal):** ainda **bloqueada por 429**. Sem isso a POC 3 não fecha.
-3. Ranking + clips remotos prontos; falta só medir tokens/findings visuais nos Top 3.
+1. **Parte A:** remote seek OneDrive real **14.59%** transfer — full download avoided YES.
+2. **Parte B:** Top 3 multimodal **~12.4k tokens (~3% do full-video)** com findings visuais novos vs transcript em 3/3 clips.
+3. Caveats aceitos para GO de tese (não de produção): model flash-lite nos clips; Whisper baseline do ranking source; findings sem casas numéricas; timestamps relativos fracos.
 
-### Próximos passos concretos (sem expandir escopo)
+### Próximos passos (fora do escopo mínimo da POC)
 
-1. Após reset de cota: `pnpm poc:multimodal-clips 2913adff-…` nos clips já extraídos (sem full-video, sem novo download).
-2. Opcional: reduzir overhead de seek (clip 3 transferiu ~114 MB para 22s) — só se Phase 2 justificar investir.
+1. Em produção: Whisper por source (ou ASR do próprio clip) antes do compare.
+2. Opcional: melhorar seek do clip 3 / pedir frets explícitos no prompt se o domínio exigir.
+3. Não repetir full-video multimodal para esses Top 3 — evidência já fecha a pergunta de valor.
 
 ---
 
@@ -188,4 +183,4 @@ Testes determinísticos: Top 3 windows, timestamps absolutos, métricas, classif
 
 Não basta “processar no Gemini”.  
 Esta POC só fecha com evidência de: (1) transferência remota real e (2) conhecimento visual que a transcrição perde.  
-**(1) está comprovado no OneDrive (14.59%). (2) ainda bloqueado por cota Gemini.**
+**(1) OneDrive 14.59%. (2) Top3 ~12.4k tokens com NEW_VISUAL em 3/3. Decisão: GO.**

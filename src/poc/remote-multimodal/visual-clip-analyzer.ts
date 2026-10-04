@@ -19,16 +19,17 @@ const MAX_POLL_MS = 5 * 60_000;
 const visualClipSchema: Schema = {
   type: Type.OBJECT,
   properties: {
-    summary: { type: Type.STRING },
+    summary: { type: Type.STRING, maxLength: 400 },
     losesImportantInfoWithoutVideo: { type: Type.BOOLEAN },
-    losesImportantInfoReason: { type: Type.STRING },
+    losesImportantInfoReason: { type: Type.STRING, maxLength: 300 },
     visualFindings: {
       type: Type.ARRAY,
+      maxItems: 6,
       items: {
         type: Type.OBJECT,
         properties: {
-          type: { type: Type.STRING },
-          description: { type: Type.STRING },
+          type: { type: Type.STRING, maxLength: 64 },
+          description: { type: Type.STRING, maxLength: 180 },
           startSeconds: { type: Type.NUMBER, nullable: true },
           endSeconds: { type: Type.NUMBER, nullable: true },
           confidence: { type: Type.NUMBER, nullable: true },
@@ -61,7 +62,11 @@ export async function analyzeVisualClip(input: {
     throw new Error('GEMINI_API_KEY is not configured');
   }
 
-  const model = env.gemini.videoModel;
+  // Prefer lighter text/video model for short clips (free-tier 503 + JSON reliability).
+  const model =
+    process.env.POC_CLIP_GEMINI_MODEL?.trim() ||
+    env.gemini.model ||
+    env.gemini.videoModel;
   const client = new GoogleGenAI({ apiKey: env.gemini.apiKey });
   const started = Date.now();
 
@@ -84,47 +89,13 @@ export async function analyzeVisualClip(input: {
   }
 
   const prompt = buildVisualClipPrompt(input.transcriptText);
-  const result = await client.models.generateContent({
+  const { result, parsed } = await generateVisualJsonWithRetry({
+    client,
     model,
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          {
-            fileData: {
-              fileUri: active.uri,
-              mimeType: active.mimeType ?? 'video/mp4',
-            },
-          },
-          { text: prompt },
-        ],
-      },
-    ],
-    config: {
-      temperature: 0.2,
-      maxOutputTokens: Math.min(env.llm.maxOutputTokens, 4096),
-      responseMimeType: 'application/json',
-      responseSchema: visualClipSchema,
-    },
+    fileUri: active.uri,
+    mimeType: active.mimeType ?? 'video/mp4',
+    prompt,
   });
-
-  const text = extractText(result);
-  if (!text?.trim()) {
-    throw new Error('Visual clip analysis returned empty content');
-  }
-
-  const parsed = JSON.parse(text) as {
-    summary?: string;
-    visualFindings?: Array<{
-      type?: string;
-      description?: string;
-      startSeconds?: number | null;
-      endSeconds?: number | null;
-      confidence?: number | null;
-    }>;
-    losesImportantInfoWithoutVideo?: boolean;
-    losesImportantInfoReason?: string;
-  };
 
   const findings: VisualFinding[] = (parsed.visualFindings ?? []).map((f) => {
     const abs = mapAbsoluteRange(
@@ -173,6 +144,84 @@ export async function analyzeVisualClip(input: {
   };
 }
 
+async function generateVisualJsonWithRetry(input: {
+  client: GoogleGenAI;
+  model: string;
+  fileUri: string;
+  mimeType: string;
+  prompt: string;
+}): Promise<{
+  result: unknown;
+  parsed: {
+    summary?: string;
+    visualFindings?: Array<{
+      type?: string;
+      description?: string;
+      startSeconds?: number | null;
+      endSeconds?: number | null;
+      confidence?: number | null;
+    }>;
+    losesImportantInfoWithoutVideo?: boolean;
+    losesImportantInfoReason?: string;
+  };
+}> {
+  const maxAttempts = 4;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const result = await input.client.models.generateContent({
+        model: input.model,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                fileData: {
+                  fileUri: input.fileUri,
+                  mimeType: input.mimeType,
+                },
+              },
+              { text: input.prompt },
+            ],
+          },
+        ],
+        config: {
+          temperature: 0.2,
+          maxOutputTokens: Math.min(env.llm.maxOutputTokens, 8192),
+          responseMimeType: 'application/json',
+          responseSchema: visualClipSchema,
+        },
+      });
+
+      const text = extractText(result);
+      if (!text?.trim()) {
+        throw new Error('Visual clip analysis returned empty content');
+      }
+      return { result, parsed: parseVisualJson(text) };
+    } catch (error) {
+      lastError = error;
+      const msg = error instanceof Error ? error.message : String(error);
+      // Daily quota — fail fast (do not burn retries).
+      if (/\b429\b|quota exceeded|GenerateRequestsPerDay/i.test(msg)) {
+        throw error;
+      }
+      const retryable =
+        /\b503\b|UNAVAILABLE|high demand|Expected ','|JSON at position|Unexpected token|invalid visual JSON/i.test(
+          msg,
+        );
+      if (!retryable || attempt === maxAttempts) throw error;
+      const delayMs = Math.min(45_000, 8_000 * attempt);
+      console.error(
+        `Visual clip attempt ${attempt}/${maxAttempts} failed (${msg.slice(0, 120)}); retry in ${delayMs}ms`,
+      );
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(String(lastError ?? 'Visual clip analysis failed'));
+}
+
 function buildVisualClipPrompt(transcriptText: string): string {
   return [
     'You analyze a SHORT guitar-lesson video clip (audio + visuals).',
@@ -180,7 +229,8 @@ function buildVisualClipPrompt(transcriptText: string): string {
     'Look for: fretboard region, shape/diagram, frets, strings, fingering, hand position,',
     'movement/direction on the neck, demonstrated chord/scale/arpeggio/lick shapes.',
     'Do NOT invent frets, fingers, or notes you cannot see confidently.',
-    'Return JSON only.',
+    'Return JSON only. Keep summary ≤ 2 sentences.',
+    'At most 6 visualFindings; each description ≤ 180 characters.',
     'For losesImportantInfoWithoutVideo: true only if omitting the image loses important teaching detail.',
     '',
     'Transcript for this window (may be incomplete/ASR):',
@@ -243,6 +293,39 @@ function tokenOverlapRatio(a: string, b: string): number {
   let hit = 0;
   for (const w of ta) if (tb.has(w)) hit += 1;
   return hit / ta.size;
+}
+
+function parseVisualJson(text: string): {
+  summary?: string;
+  visualFindings?: Array<{
+    type?: string;
+    description?: string;
+    startSeconds?: number | null;
+    endSeconds?: number | null;
+    confidence?: number | null;
+  }>;
+  losesImportantInfoWithoutVideo?: boolean;
+  losesImportantInfoReason?: string;
+} {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // Model sometimes wraps or truncates; try outermost object.
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      const slice = trimmed.slice(start, end + 1);
+      try {
+        return JSON.parse(slice);
+      } catch {
+        // fall through
+      }
+    }
+    throw new Error(
+      `invalid visual JSON: ${trimmed.slice(0, 80).replace(/\s+/g, ' ')}…`,
+    );
+  }
 }
 
 function extractText(result: unknown): string | undefined {
