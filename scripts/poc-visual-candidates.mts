@@ -1,5 +1,5 @@
 /**
- * POC CLI — Visual Candidate Detector (local heuristics only).
+ * POC CLI — Visual Candidate Detector + Ranker (local heuristics only).
  *
  * Usage:
  *   pnpm poc:visual-candidates <sourceId>
@@ -15,6 +15,8 @@ import { env } from '../src/config/env';
 import { DatabaseService } from '../src/database/database.service';
 import {
   HeuristicVisualCandidateDetector,
+  RuleBasedVisualCandidateRanker,
+  computeRankingCoverageMetrics,
   computeVisualCoverageMetrics,
   formatVisualCandidatesReport,
   loadWhisperTranscription,
@@ -56,12 +58,23 @@ async function main(): Promise<void> {
       videoDurationSeconds,
     );
 
+    const ranker = new RuleBasedVisualCandidateRanker();
+    const ranked = await ranker.rank(candidates, loaded.segments);
+    const rankingMetrics = computeRankingCoverageMetrics(
+      candidates,
+      ranked,
+      videoDurationSeconds,
+    );
+
     console.log(
       formatVisualCandidatesReport({
         sourceId,
         metrics,
         candidates,
         origin: `${loaded.origin} (${loaded.provider}, ${loaded.segments.length} segments)`,
+        rankingMetrics,
+        ranked,
+        topN: 5,
       }),
     );
   } catch (error) {

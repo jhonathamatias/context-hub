@@ -18,8 +18,52 @@ export type VisualCoverageMetrics = {
   coveragePercent: number;
 };
 
+export type VisualRelevance = 'high' | 'medium' | 'low';
+
+export type RankedVisualCandidate = VisualCandidate & {
+  score: number;
+  relevance: VisualRelevance;
+  scoreReasons: string[];
+  rejected: boolean;
+  rejectionReasons: string[];
+  /** Short transcript snippet from the candidate window (for reports). */
+  contextSnippet: string;
+};
+
+export type RankingCoverageMetrics = {
+  originalCandidateCount: number;
+  originalCandidateSeconds: number;
+  originalCoveragePercent: number;
+
+  highCandidateCount: number;
+  highCandidateSeconds: number;
+  highCoveragePercent: number;
+
+  mediumCandidateCount: number;
+  mediumCandidateSeconds: number;
+  mediumCoveragePercent: number;
+
+  lowCandidateCount: number;
+  lowCandidateSeconds: number;
+  lowCoveragePercent: number;
+
+  rejectedCandidateCount: number;
+  rejectedCandidateSeconds: number;
+
+  highMediumCandidateCount: number;
+  highMediumCandidateSeconds: number;
+  highMediumCoveragePercent: number;
+};
+
 export interface VisualCandidateDetector {
   detect(segments: TranscriptionSegment[]): Promise<VisualCandidate[]>;
+}
+
+export interface VisualCandidateRanker {
+  rank(
+    candidates: VisualCandidate[],
+    segments: TranscriptionSegment[],
+  ): Promise<RankedVisualCandidate[]>;
 }
 
 export type VisualCandidateDetectorOptions = {
