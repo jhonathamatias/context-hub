@@ -17,6 +17,20 @@ describe('classifyVideoProviderError', () => {
     assert.equal(classified.publicMessage, GEMINI_HIGH_DEMAND_RETRY_MESSAGE);
   });
 
+  it('parses @google/genai ApiError JSON message for 503', () => {
+    const classified = classifyVideoProviderError({
+      message: JSON.stringify({
+        error: {
+          code: 503,
+          message: 'This model is currently experiencing high demand.',
+          status: 'UNAVAILABLE',
+        },
+      }),
+    });
+    assert.equal(classified.retryable, true);
+    assert.equal(classified.status, 503);
+  });
+
   it('treats 429 as retryable rate_limit', () => {
     const classified = classifyVideoProviderError({
       status: 429,

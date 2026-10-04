@@ -1,6 +1,7 @@
 export {
   VIDEO_KNOWLEDGE_PROVIDER,
   type VideoAnalysisInput,
+  type VideoAnalysisTelemetry,
   type VideoKnowledgeProvider,
 } from './types';
 export { GeminiVideoKnowledgeProvider } from './gemini-video-knowledge.provider';
@@ -22,3 +23,7 @@ export {
   resolveMultimodalModel,
   willRetryMultimodalAttempt,
 } from './multimodal-attempts';
+export {
+  resolveGeminiVideoMediaResolution,
+  resolveGeminiVideoProcessingMode,
+} from './gemini-video-config';

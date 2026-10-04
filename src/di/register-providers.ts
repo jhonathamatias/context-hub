@@ -79,10 +79,16 @@ export function registerDomainProviders(logger?: FastifyBaseLogger): void {
     KNOWLEDGE_EXTRACTION_PROVIDER,
     Container.get(LlmKnowledgeExtractionProvider),
   );
-  Container.set(
-    VIDEO_KNOWLEDGE_PROVIDER,
-    Container.get(GeminiVideoKnowledgeProvider),
-  );
+  if (env.videoKnowledgeProvider === 'gemini') {
+    Container.set(
+      VIDEO_KNOWLEDGE_PROVIDER,
+      Container.get(GeminiVideoKnowledgeProvider),
+    );
+  } else {
+    throw new Error(
+      `Unsupported VIDEO_KNOWLEDGE_PROVIDER="${String(env.videoKnowledgeProvider)}". Supported: gemini`,
+    );
+  }
   Container.set(
     EMBEDDING_PROVIDER,
     env.embedding.provider === 'gemini'
@@ -98,10 +104,13 @@ export function registerDomainProviders(logger?: FastifyBaseLogger): void {
   logger?.info(
     {
       videoProcessor: env.videoProcessor,
+      videoKnowledgeProvider: env.videoKnowledgeProvider,
       geminiVideoModel: env.gemini.videoModel,
       geminiVideoFallbackModel: env.gemini.videoFallbackModel ?? null,
       geminiVideoMaxAttempts: env.gemini.videoMaxAttempts,
       geminiVideoRetryDelayMs: env.gemini.videoRetryDelayMs,
+      geminiVideoProcessingMode: env.gemini.videoProcessingMode,
+      geminiVideoMediaResolution: env.gemini.videoMediaResolution,
     },
     'Video processor pipeline selected',
   );

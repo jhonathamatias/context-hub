@@ -74,6 +74,21 @@ const rawEnvSchema = z.object({
     .min(500)
     .max(120_000)
     .default(5_000),
+  /**
+   * Gemini video understanding mode (adapter-only POC).
+   * static = fixed 1 FPS; agentic = dynamic navigation (when model supports it).
+   */
+  GEMINI_VIDEO_PROCESSING_MODE: z.enum(['static', 'agentic']).default('static'),
+  /**
+   * Per-frame media resolution for Gemini video (adapter-only POC).
+   * default = omit (model default); low|medium|high map to MEDIA_RESOLUTION_*.
+   */
+  GEMINI_VIDEO_MEDIA_RESOLUTION: z
+    .enum(['default', 'low', 'medium', 'high'])
+    .default('default'),
+
+  /** Which VideoKnowledgeProvider implementation to bind (composition root). */
+  VIDEO_KNOWLEDGE_PROVIDER: z.enum(['gemini']).default('gemini'),
 
   /** Pipeline after video is on disk: Whisper legacy vs Gemini multimodal POC. */
   VIDEO_PROCESSOR: z.enum(['legacy', 'multimodal']).default('legacy'),
@@ -146,7 +161,10 @@ export type AppEnv = {
     videoFallbackModel?: string;
     videoMaxAttempts: number;
     videoRetryDelayMs: number;
+    videoProcessingMode: 'static' | 'agentic';
+    videoMediaResolution: 'default' | 'low' | 'medium' | 'high';
   };
+  videoKnowledgeProvider: 'gemini';
   videoProcessor: 'legacy' | 'multimodal';
   ollama: {
     baseUrl: string;
@@ -280,6 +298,8 @@ export function loadEnv(
     videoModel: raw.GEMINI_VIDEO_MODEL,
     videoMaxAttempts: raw.GEMINI_VIDEO_MAX_ATTEMPTS,
     videoRetryDelayMs: raw.GEMINI_VIDEO_RETRY_DELAY_MS,
+    videoProcessingMode: raw.GEMINI_VIDEO_PROCESSING_MODE,
+    videoMediaResolution: raw.GEMINI_VIDEO_MEDIA_RESOLUTION,
   };
   if (raw.GEMINI_API_KEY !== undefined) {
     gemini.apiKey = raw.GEMINI_API_KEY;
@@ -330,6 +350,7 @@ export function loadEnv(
     },
     openai,
     gemini,
+    videoKnowledgeProvider: raw.VIDEO_KNOWLEDGE_PROVIDER,
     videoProcessor: raw.VIDEO_PROCESSOR,
     ollama: {
       baseUrl: raw.OLLAMA_BASE_URL,

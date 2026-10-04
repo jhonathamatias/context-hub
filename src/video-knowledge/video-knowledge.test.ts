@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { Type } from '@google/genai';
 import { JobName } from '../jobs/types';
-import { SchemaType } from '@google/generative-ai';
+import { multimodalKnowledgeResponseSchema } from './gemini-response-schema';
 import { mapToStructuredLessonKnowledge } from './map-gemini-video-knowledge';
 import { buildPipelineNextJobMap } from './pipeline';
-import { multimodalKnowledgeResponseSchema } from './prompt';
 import { knowledgeToSyntheticChunks } from './synthetic-chunks';
 import type { VideoKnowledgeProvider } from './types';
 
 describe('multimodalKnowledgeResponseSchema', () => {
-  it('uses Gemini SchemaType (no JSON Schema unions / additionalProperties)', () => {
+  it('uses @google/genai Type enum (no JSON Schema unions / additionalProperties)', () => {
     const raw = JSON.stringify(multimodalKnowledgeResponseSchema);
-    assert.equal(multimodalKnowledgeResponseSchema.type, SchemaType.OBJECT);
+    assert.equal(multimodalKnowledgeResponseSchema.type, Type.OBJECT);
     assert.equal(raw.includes('additionalProperties'), false);
     assert.equal(raw.includes('["number","null"]'), false);
     assert.equal(raw.includes('"nullable":true'), true);

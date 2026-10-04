@@ -32,12 +32,26 @@ function readStatus(error: unknown): number | undefined {
     statusCode?: number;
   };
   const status = candidate.status ?? candidate.statusCode;
-  return typeof status === 'number' ? status : undefined;
+  if (typeof status === 'number') return status;
+
+  // @google/genai ApiError often puts a JSON blob in message: {"error":{"code":503,...}}
+  const message = readMessage(error);
+  try {
+    const parsed = JSON.parse(message) as { error?: { code?: number } };
+    if (typeof parsed?.error?.code === 'number') return parsed.error.code;
+  } catch {
+    // not JSON
+  }
+  return undefined;
 }
 
 function readMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string') return message;
+  }
   return String(error ?? '');
 }
 
@@ -80,16 +94,23 @@ export function classifyVideoProviderError(
   }
 
   if (
-    /failed schema|invalid schema|schema validation|zod|parse|json/i.test(
-      lower,
-    ) &&
-    !/503|429|unavailable|rate/i.test(lower)
+    /failed schema|invalid schema|schema validation|\bzod\b/i.test(lower) &&
+    !/503|429|unavailable|rate|high demand/i.test(lower)
   ) {
     return {
       category: 'invalid_schema',
       retryable: false,
       ...(status !== undefined ? { status } : {}),
       publicMessage: 'A resposta da análise veio em formato inválido.',
+    };
+  }
+
+  if (/returned empty content/i.test(lower)) {
+    return {
+      category: 'unavailable',
+      retryable: true,
+      ...(status !== undefined ? { status } : {}),
+      publicMessage: GEMINI_HIGH_DEMAND_RETRY_MESSAGE,
     };
   }
 
@@ -108,20 +129,35 @@ export function classifyVideoProviderError(
     };
   }
 
-  if (
-    status === 429 ||
-    /resource_exhausted|rate[\s_-]?limit|quota|high demand/i.test(lower)
-  ) {
+  // Prefer HTTP status when present — Gemini often labels 503 as "high demand".
+  if (status === 503 || (typeof status === 'number' && status >= 500)) {
+    return {
+      category: 'unavailable',
+      retryable: true,
+      status,
+      publicMessage: GEMINI_HIGH_DEMAND_RETRY_MESSAGE,
+    };
+  }
+
+  if (status === 429) {
     return {
       category: 'rate_limit',
       retryable: true,
-      ...(status !== undefined ? { status } : { status: 429 }),
+      status: 429,
+      publicMessage: GEMINI_HIGH_DEMAND_RETRY_MESSAGE,
+    };
+  }
+
+  if (/resource_exhausted|rate[\s_-]?limit|quota|high demand/i.test(lower)) {
+    return {
+      category: 'rate_limit',
+      retryable: true,
+      status: 429,
       publicMessage: GEMINI_HIGH_DEMAND_RETRY_MESSAGE,
     };
   }
 
   if (
-    status === 503 ||
     /service unavailable|temporarily unavailable|overloaded|unavailab/i.test(
       lower,
     )
@@ -129,7 +165,7 @@ export function classifyVideoProviderError(
     return {
       category: 'unavailable',
       retryable: true,
-      ...(status !== undefined ? { status } : { status: 503 }),
+      status: 503,
       publicMessage: GEMINI_HIGH_DEMAND_RETRY_MESSAGE,
     };
   }

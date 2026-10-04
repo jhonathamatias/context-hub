@@ -164,6 +164,25 @@ export class MultimodalKnowledgeService {
             originalName: source.originalName,
             mimeType: guessVideoMime(source.originalName),
             model,
+            onTelemetry: (event) => {
+              logger.info(
+                {
+                  sourceId: event.sourceId,
+                  provider: event.provider,
+                  model: event.model,
+                  processingMode: event.processingMode,
+                  mediaResolution: event.mediaResolution,
+                  durationMs: event.durationMs,
+                  fileReuse: event.fileReuse,
+                  inputTokens: event.inputTokens ?? null,
+                  outputTokens: event.outputTokens ?? null,
+                  totalTokens: event.totalTokens ?? null,
+                  attempt,
+                  maxAttempts,
+                },
+                'Video knowledge analysis telemetry',
+              );
+            },
           }),
       );
 
