@@ -19,7 +19,8 @@
     "migration:run": "NODE_OPTIONS='--import tsx' typeorm migration:run -d src/database/data-source.ts",
     "migration:revert": "NODE_OPTIONS='--import tsx' typeorm migration:revert -d src/database/data-source.ts",
     "migration:show": "NODE_OPTIONS='--import tsx' typeorm migration:show -d src/database/data-source.ts",
-    "db:ping": "tsx src/database/check-connectivity.ts"
+    "db:ping": "tsx src/database/check-connectivity.ts",
+    "poc:visual-candidates": "tsx scripts/poc-visual-candidates.mts"
   },
   "repository": {
     "type": "git",
