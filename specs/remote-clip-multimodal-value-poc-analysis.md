@@ -12,62 +12,64 @@ Data: 2026-10-04.
 
 | # | Pergunta | Resposta nesta execução |
 |---|----------|-------------------------|
-| 1 | Conseguimos extrair Top 3 do OneDrive via remote seek sem baixar o arquivo inteiro? | **UNPROVEN / FAILED no OneDrive** (sem token Graph válido). Em simulação HTTP Range local, FFmpeg `-c copy` **não** evitou transferência grande. |
-| 2 | Top 3 multimodais produzem info visual nova vs transcript? | **Não respondida ainda** — Gemini free tier 429 (~21h). Clips + transcripts prontos para rerun. |
+| 1 | Conseguimos extrair Top 3 do OneDrive via remote seek sem baixar o arquivo inteiro? | **YES** — CDN OneDrive real (`my.microsoftpersonalcontent.com`), Range 206, **14.59%** dos bytes do arquivo (~231 MB de ~1.58 GB). |
+| 2 | Top 3 multimodais produzem info visual nova vs transcript? | **Ainda pendente** — Gemini free tier 429. Clips remotos já extraídos; Phase 2 pode rerodar sem re-baixar. |
 
 ---
 
-## A. Remote access
+## A. Remote access (OneDrive REAL — run com token temporário)
 
 ```text
-Source: 5fe720dc-d4a4-42dd-81be-f236a3eea095
-REMOTE SEEK RESULT: SIMULATED (OneDrive: not resolved)
-Full download avoided: UNPROVEN (OneDrive) / NO (simulated transfer)
+Source: 2913adff-2332-40fb-9303-6c23eda1f463
+Video: video1240787473.mp4 (mesmo link OneDrive da POC anterior)
+REMOTE SEEK RESULT: OK
+Full download avoided: YES
 
-Original video size: 461,698,570 bytes (~441 MiB local original.mp4)
-Transferred bytes (proxy, sum of 3 extracts): 659,095,552 (~142.75% of original)
-Transfer ratio: 142.75%
-Clip output bytes: 12,557,279 (~2.72% of original)
-Extraction time: 666 ms
+Original video size: 1,585,633,066 bytes (~1.48 GiB)
+Transferred bytes (proxy, sum of 3 extracts): 231,292,928 (~220.6 MiB)
+Transfer ratio: 14.59%
+Clip output bytes: 44,316,161 (~2.80% of original)
+Extraction time: 51,712 ms (~52s)
 ```
 
-### Por clip
+### Por clip (remoto)
 
 | Rank | Window | Duration | Output bytes | Transferred bytes | Extract ms | Codec |
 |------|--------|----------|--------------|-------------------|------------|-------|
-| 1 | 36:39→37:33 | 54s | 6,545,498 | 47,710,208 | 228 | copy |
-| 2 | 31:57→32:19 | 22s | 3,019,501 | 207,093,760 | 200 | copy |
-| 3 | 32:35→32:57 | 22s | 2,992,280 | 404,291,584 | 238 | copy |
+| 1 | 36:39→37:33 | 54s | 19,069,611 | 49,299,456 | 11,021 | copy |
+| 2 | 31:57→32:19 | 22s | 12,965,204 | 67,837,952 | 14,909 | copy |
+| 3 | 32:35→32:57 | 22s | 12,281,346 | 114,155,520 | 25,782 | copy |
 
-### HTTP Range evidence (local simulation proxy)
+### HTTP Range evidence (OneDrive CDN)
 
 ```text
+host: my.microsoftpersonalcontent.com
 Accept-Ranges: bytes
 HEAD: 200
 Range GET: 206 Partial Content
-Content-Range: bytes 0-1023/461698570
+Content-Range: bytes 0-1023/1585633066
 supportsPartialContent: true
+redirects: followed to personal content CDN
 ```
 
-### OneDrive
+### Comparação com simulação local anterior (Talisson file)
 
-```text
-POC_ONEDRIVE_INTEGRATION_ID not set / integration token 401 when tried earlier
-→ playback URL not resolved
-→ REMOTE SEEK on real OneDrive CDN: NOT TESTED
-```
+| | Local Range sim (441 MB file) | OneDrive real (1.58 GB file) |
+|--|--|--|
+| Transfer ratio | **142%** (pior que ler tudo) | **14.59%** |
+| Full download avoided | NO | **YES** |
+| REMOTE SEEK | SIMULATED | **OK** |
 
 ### Evidência crítica
 
-- **Clip output pequeno ≠ poucos bytes transferidos.**
-- Com FFmpeg `-ss` (input seek) + `-c copy` via proxy Range-aware, a soma transferida **ultrapassou** o tamanho do arquivo (leituras repetidas / seek ineficiente / moov).
-- Portanto, mesmo com Range HTTP comprovado, **não** podemos afirmar “full download avoided: YES” para este método.
+- Remote seek no CDN OneDrive **funciona** e evita ~85% dos bytes vs download completo.
+- Clip output (~2.8%) ≠ transferred (~14.6%) — ainda há overhead de seek/moov, mas muito abaixo de 100%.
+- Token Graph temporário foi usado só para o teste e **limpo** das integrações depois.
 
-Artifact Phase 1:
+Artifact Phase 1 (remote OK):
 
 ```text
-/tmp/poc-remote-clips/5fe720dc-…/<run>/phase1.json
-(container: /app/tmp/poc-remote-clips/…)
+/app/tmp/poc-remote-clips/2913adff-…/1791083496437/phase1.json
 ```
 
 ---
@@ -79,10 +81,10 @@ Status: BLOCKED — Gemini 429 free tier (20 req/day, gemini-3.8-flash)
 Retry delay reported: ~20h51m
 ```
 
-Clips estão no disco; Phase 2 pode rerodar sem re-extrair:
+Clips remotos estão no disco; Phase 2 pode rerodar sem re-extrair / sem token:
 
 ```bash
-docker compose exec -T node pnpm poc:multimodal-clips 5fe720dc-d4a4-42dd-81be-f236a3eea095
+docker compose exec -T node pnpm poc:multimodal-clips 2913adff-2332-40fb-9303-6c23eda1f463
 ```
 
 ### Transcripts capturados (para revisão / próximo run)
@@ -109,18 +111,18 @@ Já no transcript há linguagem espacial (região, braço, formato, desenho). A 
 ## C. Comparação global
 
 ```text
-Full video duration: ~69m52s
+Full video duration: ~69m52s (mesmo ranking Top 3; fonte OneDrive 1.58 GB)
 Top 3 duration: ~1m38s (98s)
 
-Full-video baseline tokens: ~384k (Talisson) / ~410k (segundo vídeo)
+Full-video baseline tokens: ~410k (video1240787473 full multimodal anterior)
 Top-3 tokens: NOT MEASURED (quota)
 Token ratio: n/a
 Token reduction: n/a
 
-Original file bytes: 461,698,570
-Transferred bytes for Top3 extraction (simulated): 659,095,552
-Transfer ratio: 142.75%  ← worse than full local read once
-Clip output ratio: 2.72%
+Original file bytes: 1,585,633,066
+Transferred bytes for Top3 extraction (OneDrive CDN): 231,292,928
+Transfer ratio: 14.59%  ← ~85% menos que download completo
+Clip output ratio: 2.80%
 ```
 
 ---
@@ -130,13 +132,13 @@ Clip output ratio: 2.72%
 1. **Clips com info visual nova?** — Indeterminado (sem multimodal).
 2. **O que Whisper perde?** — Indeterminado; transcript já cita região/formato/desenho.
 3. **Invenção multimodal?** — n/a
-4. **Resolução suficiente?** — Clips gerados com `-c copy` (~12 MB total); avaliação visual humana possível localmente; Gemini não viu.
+4. **Resolução suficiente?** — Clips remotos ~44 MB total (`-c copy`); Gemini não viu ainda.
 5. **Timestamps absolutos?** — Conversão implementada; não exercitada sem findings.
 6. **Ranker escolheu bons trechos?** — Transcripts dos Top 3 são fortemente espaciais → ranking parece correto a priori.
 7. **#1 score 7 justificou o topo?** — Transcript mais rico (formato/desenho/C7/direções) → sim como hipótese.
-8. **Remote seek evitou download completo?** — **Não comprovado no OneDrive.** Na simulação, **não** (transfer > 100%).
-9. **Maior gargalo?** — (1) auth OneDrive / (2) ineficiência de seek FFmpeg+copy / (3) cota Gemini.
-10. **Avançar Top 5 / HIGH?** — **Não** até Phase 2 responder valor visual e seek remoto ser resolvido.
+8. **Remote seek evitou download completo?** — **YES** no OneDrive real (14.59% transferidos). Simulação local anterior era enganosa (142%).
+9. **Maior gargalo agora?** — Cota Gemini (Phase 2). Auth OneDrive só precisa de token temporário por run.
+10. **Avançar Top 5 / HIGH?** — **Não** até Phase 2 responder valor visual.
 
 ---
 
@@ -148,29 +150,25 @@ ITERATE
 
 ### Justificativa
 
-1. **Parte A (transferência):** evidência útil — Range HTTP funciona, mas o método FFmpeg `-c copy` usado **não** economiza bytes (chegou a transferir mais que o arquivo). OneDrive real não foi testado (token). Não há GO em “remote seek evita download”.
-2. **Parte B (valor multimodal):** não executada por **429**. Clips e transcripts estão salvos; não se pode concluir valor visual ainda.
-3. Há sinal de que o **ranking** aponta trechos certos (transcript espacial), e clips de saída são só ~2.7% do arquivo — mas isso sozinho não prova economia de rede nem ganho multimodal.
+1. **Parte A (transferência):** **GO parcial** — remote seek OneDrive comprovado: Range 206 no CDN, **14.59%** dos bytes, full download avoided YES. Simulação local (142%) não representa o CDN.
+2. **Parte B (valor multimodal):** ainda **bloqueada por 429**. Sem isso a POC 3 não fecha.
+3. Ranking + clips remotos prontos; falta só medir tokens/findings visuais nos Top 3.
 
 ### Próximos passos concretos (sem expandir escopo)
 
-1. Token Graph válido → `POC_ONEDRIVE_INTEGRATION_ID` + item → reexecutar `pnpm poc:remote-clips` e medir CDN real.
-2. Experimentar seek que reduza bytes (ex. remux segmentado, `-c copy` com index, ou download só de ranges planejados) — só medindo proxy.
-3. Após reset de cota: `pnpm poc:multimodal-clips` nos artifacts existentes (sem full-video).
+1. Após reset de cota: `pnpm poc:multimodal-clips 2913adff-…` nos clips já extraídos (sem full-video, sem novo download).
+2. Opcional: reduzir overhead de seek (clip 3 transferiu ~114 MB para 22s) — só se Phase 2 justificar investir.
 
 ---
 
 ## Como executar
 
 ```bash
-# Phase 1 — NO Gemini
-docker compose exec -T node pnpm poc:remote-clips 5fe720dc-d4a4-42dd-81be-f236a3eea095
+# Phase 1 — NO Gemini (OneDrive: POC_ONEDRIVE_SHARE_URL + POC_ONEDRIVE_ACCESS_TOKEN [+ ITEM_ID])
+docker compose exec -T node pnpm poc:remote-clips 2913adff-2332-40fb-9303-6c23eda1f463
 
-# Optional real OneDrive:
-# POC_ONEDRIVE_INTEGRATION_ID=... POC_ONEDRIVE_ITEM_ID=... pnpm poc:remote-clips ...
-
-# Phase 2 — Top 3 only (uses GEMINI_API_KEY; no full video)
-docker compose exec -T node pnpm poc:multimodal-clips 5fe720dc-d4a4-42dd-81be-f236a3eea095
+# Phase 2 — Top 3 only (uses GEMINI_API_KEY; no full video; no OneDrive token needed)
+docker compose exec -T node pnpm poc:multimodal-clips 2913adff-2332-40fb-9303-6c23eda1f463
 ```
 
 ### Código
@@ -190,4 +188,4 @@ Testes determinísticos: Top 3 windows, timestamps absolutos, métricas, classif
 
 Não basta “processar no Gemini”.  
 Esta POC só fecha com evidência de: (1) transferência remota real e (2) conhecimento visual que a transcrição perde.  
-Hoje temos evidência parcial de (1) e bloqueio de (2) por cota.
+**(1) está comprovado no OneDrive (14.59%). (2) ainda bloqueado por cota Gemini.**

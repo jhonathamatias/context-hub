@@ -15,7 +15,6 @@ import { OneDriveVideoConnector } from '../src/connectors/onedrive.connector';
 import { env } from '../src/config/env';
 import { DatabaseService } from '../src/database/database.service';
 import { Source } from '../src/database/entities/source.entity';
-import { IntegrationService } from '../src/integrations/integration.service';
 import { aggregateRemoteAccess } from '../src/poc/remote-multimodal/metrics';
 import { extractTop3Clips } from '../src/poc/remote-multimodal/remote-clip-extractor';
 import { formatPhase1Report } from '../src/poc/remote-multimodal/report';
@@ -174,21 +173,37 @@ async function tryResolveOneDrivePlayback(): Promise<{
   itemId: string;
   size: number | null;
 } | null> {
-  const integrationId = process.env.POC_ONEDRIVE_INTEGRATION_ID?.trim();
-  if (!integrationId) return null;
+  /**
+   * Prefer explicit POC env (avoids IntegrationService DI / DB coupling):
+   *   POC_ONEDRIVE_SHARE_URL
+   *   POC_ONEDRIVE_ACCESS_TOKEN
+   *   POC_ONEDRIVE_ITEM_ID (optional if listVideos returns one item)
+   *
+   * Fallback: resolve via HTTP API using POC_ONEDRIVE_INTEGRATION_ID.
+   */
+  let shareUrl = process.env.POC_ONEDRIVE_SHARE_URL?.trim();
+  let accessToken = process.env.POC_ONEDRIVE_ACCESS_TOKEN?.trim();
+  let itemId = process.env.POC_ONEDRIVE_ITEM_ID?.trim();
 
-  const integrations = Container.get(IntegrationService);
+  const integrationId = process.env.POC_ONEDRIVE_INTEGRATION_ID?.trim();
+  if ((!shareUrl || !accessToken) && integrationId) {
+    const fromApi = await resolveViaHttpApi(integrationId);
+    shareUrl = shareUrl || fromApi.shareUrl;
+    accessToken = accessToken || fromApi.accessTokenHint;
+    // Token is never returned by API — must use POC_ONEDRIVE_ACCESS_TOKEN
+  }
+
+  if (!shareUrl) return null;
+  if (!accessToken) {
+    throw new Error(
+      'POC_ONEDRIVE_ACCESS_TOKEN is required to resolve a real OneDrive playback URL',
+    );
+  }
+
   const connector = Container.get(OneDriveVideoConnector);
 
-  const shareUrl = await integrations.resolveOneDriveShareUrl(integrationId);
-  const accessToken =
-    await integrations.resolveOneDriveAccessToken(integrationId);
-
-  let itemId = process.env.POC_ONEDRIVE_ITEM_ID?.trim();
   if (!itemId) {
-    const items = await connector.listVideos(shareUrl, {
-      ...(accessToken ? { accessToken } : {}),
-    });
+    const items = await connector.listVideos(shareUrl, { accessToken });
     const match =
       items.find((i) => i.name.toLowerCase().includes('talisson')) ?? items[0];
     itemId = match?.id;
@@ -198,13 +213,29 @@ async function tryResolveOneDrivePlayback(): Promise<{
   const playback = await connector.resolvePlayback({
     shareUrl,
     itemId,
-    ...(accessToken ? { accessToken } : {}),
+    accessToken,
   });
 
   return {
     downloadUrl: playback.downloadUrl,
     itemId: playback.itemId,
     size: playback.size,
+  };
+}
+
+async function resolveViaHttpApi(integrationId: string): Promise<{
+  shareUrl?: string;
+  accessTokenHint?: string;
+}> {
+  const res = await fetch(`http://127.0.0.1:3000/integrations/${integrationId}`);
+  if (!res.ok) return {};
+  const body = (await res.json()) as {
+    shareUrl?: string;
+    hasAccessToken?: boolean;
+  };
+  return {
+    ...(body.shareUrl ? { shareUrl: body.shareUrl } : {}),
+    // API never returns the raw token; caller must set POC_ONEDRIVE_ACCESS_TOKEN.
   };
 }
 
