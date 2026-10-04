@@ -12,3 +12,13 @@ export {
   isMultimodalPipeline,
   type VideoProcessorMode,
 } from './pipeline';
+export {
+  classifyVideoProviderError,
+  GEMINI_HIGH_DEMAND_RETRY_MESSAGE,
+} from './provider-error';
+export {
+  multimodalPrimaryAttempts,
+  multimodalTotalAttempts,
+  resolveMultimodalModel,
+  willRetryMultimodalAttempt,
+} from './multimodal-attempts';

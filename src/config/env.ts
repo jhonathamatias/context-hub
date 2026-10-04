@@ -63,6 +63,17 @@ const rawEnvSchema = z.object({
   GEMINI_MODEL: z.string().min(1).default('gemini-3.6-flash'),
   /** Model used for multimodal video analysis (POC). */
   GEMINI_VIDEO_MODEL: z.string().min(1).default('gemini-3.8-flash'),
+  /** Optional model used only after primary multimodal attempts are exhausted. */
+  GEMINI_VIDEO_FALLBACK_MODEL: optionalNonEmptyString,
+  /** BullMQ attempts for the primary Gemini video model. */
+  GEMINI_VIDEO_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(4),
+  /** Base delay (ms) for BullMQ exponential backoff on multimodal.analyze. */
+  GEMINI_VIDEO_RETRY_DELAY_MS: z.coerce
+    .number()
+    .int()
+    .min(500)
+    .max(120_000)
+    .default(5_000),
 
   /** Pipeline after video is on disk: Whisper legacy vs Gemini multimodal POC. */
   VIDEO_PROCESSOR: z.enum(['legacy', 'multimodal']).default('legacy'),
@@ -132,6 +143,9 @@ export type AppEnv = {
     apiKey?: string;
     model: string;
     videoModel: string;
+    videoFallbackModel?: string;
+    videoMaxAttempts: number;
+    videoRetryDelayMs: number;
   };
   videoProcessor: 'legacy' | 'multimodal';
   ollama: {
@@ -264,9 +278,14 @@ export function loadEnv(
   const gemini: AppEnv['gemini'] = {
     model: raw.GEMINI_MODEL,
     videoModel: raw.GEMINI_VIDEO_MODEL,
+    videoMaxAttempts: raw.GEMINI_VIDEO_MAX_ATTEMPTS,
+    videoRetryDelayMs: raw.GEMINI_VIDEO_RETRY_DELAY_MS,
   };
   if (raw.GEMINI_API_KEY !== undefined) {
     gemini.apiKey = raw.GEMINI_API_KEY;
+  }
+  if (raw.GEMINI_VIDEO_FALLBACK_MODEL !== undefined) {
+    gemini.videoFallbackModel = raw.GEMINI_VIDEO_FALLBACK_MODEL;
   }
 
   const embedding: AppEnv['embedding'] = {

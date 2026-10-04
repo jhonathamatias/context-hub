@@ -7,6 +7,8 @@ export type VideoAnalysisInput = {
   videoPath: string;
   originalName: string;
   mimeType: string;
+  /** Optional model override (used after primary attempts for fallback). */
+  model?: string;
 };
 
 /**

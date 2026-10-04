@@ -69,7 +69,10 @@ function LessonPage() {
     pipeline?.knowledgeStatus === "COMPLETED" || knowledgeFailed;
   const needsSearchIndex =
     hasTranscript && (pipeline?.embeddingCount ?? 0) === 0;
+  const sourceProcessing =
+    lesson.data?.status === "PROCESSING" || lesson.data?.status === "PENDING";
   const canRetryPipeline =
+    !sourceProcessing &&
     hasTranscript &&
     (knowledgeFailed || needsSearchIndex || lesson.data?.status === "FAILED");
 
@@ -371,7 +374,7 @@ function LessonPage() {
             </div>
 
             <div className="mt-6">
-              {knowledgeProcessing ? (
+              {knowledgeProcessing || (multimodalBusy && knowledgeFailed) ? (
                 <p className="text-sm text-muted-foreground">
                   Gerando o resumo desta aula…
                 </p>

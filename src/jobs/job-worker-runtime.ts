@@ -64,13 +64,17 @@ export class JobWorkerRuntime {
     );
 
     worker.on('failed', (job, error) => {
+      const maxAttempts = job?.opts.attempts ?? env.jobs.attempts;
+      const attemptsMade = job?.attemptsMade ?? 0;
       logger.error(
         {
           err: error,
           queueJobId: job?.id,
           jobName: job?.name,
           sourceId: job?.data.sourceId,
-          attemptsMade: job?.attemptsMade,
+          attempt: attemptsMade,
+          maxAttempts,
+          willRetry: attemptsMade < maxAttempts,
         },
         'Job failed',
       );
@@ -84,14 +88,21 @@ export class JobWorkerRuntime {
     job: Job<SourceJobPayload>,
     logger: FastifyBaseLogger,
   ): Promise<void> {
+    const attempt = job.attemptsMade + 1;
+    const maxAttempts = job.opts.attempts ?? env.jobs.attempts;
     const jobLogger = logger.child({
       queueJobId: job.id,
       jobName: name,
       sourceId: job.data.sourceId,
-      attempt: job.attemptsMade + 1,
+      attempt,
+      maxAttempts,
     });
     jobLogger.info('Job started');
-    await this.dispatcher.dispatch(name, job.data, jobLogger);
+    await this.dispatcher.dispatch(name, job.data, jobLogger, {
+      attempt,
+      maxAttempts,
+      queueJobId: String(job.id),
+    });
     jobLogger.info('Job completed');
   }
 }

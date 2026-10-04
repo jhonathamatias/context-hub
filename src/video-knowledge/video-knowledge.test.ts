@@ -36,6 +36,13 @@ describe('buildPipelineNextJobMap', () => {
     assert.equal(map[JobName.EmbeddingsGenerate], JobName.SourceIndex);
     assert.equal(map[JobName.TranscriptionRun], undefined);
   });
+
+  it('does not enqueue the next stage until multimodal.analyze completes', () => {
+    const map = buildPipelineNextJobMap('multimodal');
+    // JobDispatcher only calls enqueueNext after handler.execute resolves.
+    assert.equal(map[JobName.MultimodalAnalyze], JobName.EmbeddingsGenerate);
+    assert.notEqual(map[JobName.MultimodalAnalyze], JobName.SourceIndex);
+  });
 });
 
 describe('mapToStructuredLessonKnowledge', () => {

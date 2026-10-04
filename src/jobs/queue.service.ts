@@ -1,6 +1,7 @@
 import { Queue, type ConnectionOptions, type JobsOptions } from 'bullmq';
 import { Service } from 'typedi';
 import { env } from '../config/env';
+import { multimodalTotalAttempts } from '../video-knowledge/multimodal-attempts';
 import { isMultimodalPipeline } from '../video-knowledge/pipeline';
 import { JobName, type SourceJobPayload } from './types';
 
@@ -9,6 +10,27 @@ const DEFAULT_JOB_OPTIONS: JobsOptions = {
   removeOnFail: 200,
   backoff: { type: 'exponential', delay: 2_000 },
 };
+
+/** Multimodal uses longer backoff + native BullMQ jitter (avoids worker sleep). */
+function optionsForJob(name: JobName): JobsOptions {
+  if (name === JobName.MultimodalAnalyze) {
+    return {
+      removeOnComplete: 100,
+      removeOnFail: 200,
+      attempts: multimodalTotalAttempts(),
+      backoff: {
+        type: 'exponential',
+        delay: env.gemini.videoRetryDelayMs,
+        jitter: 0.25,
+      },
+    };
+  }
+
+  return {
+    ...DEFAULT_JOB_OPTIONS,
+    attempts: env.jobs.attempts,
+  };
+}
 
 export type EnqueuedJob = {
   queueJobId: string;
@@ -40,10 +62,7 @@ export class JobQueueService {
 
     const queue = new Queue<SourceJobPayload>(name, {
       connection: this.getConnection(),
-      defaultJobOptions: {
-        ...DEFAULT_JOB_OPTIONS,
-        attempts: env.jobs.attempts,
-      },
+      defaultJobOptions: optionsForJob(name),
     });
     this.queues.set(name, queue);
     return queue;
@@ -65,8 +84,7 @@ export class JobQueueService {
 
     const job = await queue.add(name, payload, {
       jobId: `${payload.sourceId}-${Date.now()}`,
-      attempts: env.jobs.attempts,
-      backoff: { type: 'exponential', delay: 2_000 },
+      ...optionsForJob(name),
     });
 
     return {

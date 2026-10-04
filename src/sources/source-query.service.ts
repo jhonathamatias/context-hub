@@ -229,6 +229,23 @@ function buildPipelineProgress(input: {
     };
   }
 
+  // BullMQ delay between multimodal retries: source stays PROCESSING while the
+  // latest knowledge row is FAILED with a public retry message.
+  if (
+    sourceStatus === SourceStatus.PROCESSING &&
+    knowledge?.status === KnowledgeExtractionStatus.FAILED &&
+    knowledge.errorMessage?.includes('tentada novamente')
+  ) {
+    return {
+      percent: 90,
+      stage: ProcessingStage.EXTRACT_KNOWLEDGE,
+      label: 'Analisando vídeo com Gemini',
+      detail: knowledge.errorMessage,
+      transcriptionPercent: 100,
+      ingestPercent: 100,
+    };
+  }
+
   // Search index may exist before knowledge succeeds (soft-fail path).
   // Only treat as fully done when the source is READY or knowledge finished.
   if (

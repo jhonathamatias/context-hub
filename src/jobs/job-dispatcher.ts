@@ -12,7 +12,10 @@ import { SourceIngestJobHandler } from './handlers/source-ingest.handler';
 import { TranscriptionRunJobHandler } from './handlers/transcription-run.handler';
 import { VideoExtractJobHandler } from './handlers/video-extract.handler';
 import { JobQueueService } from './queue.service';
-import type { SourceJobHandler } from './source-job-handler';
+import type {
+  JobExecutionContext,
+  SourceJobHandler,
+} from './source-job-handler';
 import { JobName, type SourceJobPayload } from './types';
 
 /**
@@ -53,12 +56,13 @@ export class JobDispatcher {
     name: JobName,
     payload: SourceJobPayload,
     logger: FastifyBaseLogger,
+    context?: JobExecutionContext,
   ): Promise<void> {
     const handler = this.handlersByName.get(name);
     if (!handler) {
       throw new Error(`No handler registered for job: ${name}`);
     }
-    await handler.execute(payload.sourceId, logger);
+    await handler.execute(payload.sourceId, logger, context);
     await this.enqueueNext(name, payload.sourceId, logger);
   }
 

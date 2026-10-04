@@ -1,5 +1,6 @@
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
+import { UnrecoverableError } from 'bullmq';
 import type { FastifyBaseLogger } from 'fastify';
 import { Inject, Service } from 'typedi';
 import { env } from '../config/env';
@@ -16,7 +17,17 @@ import {
   Transcription,
   TranscriptionStatus,
 } from '../database';
+import type { JobExecutionContext } from '../jobs/source-job-handler';
 import { withProcessingLog } from '../observability';
+import {
+  multimodalTotalAttempts,
+  resolveMultimodalModel,
+  willRetryMultimodalAttempt,
+} from './multimodal-attempts';
+import {
+  classifyVideoProviderError,
+  publicMessageForAttempt,
+} from './provider-error';
 import { knowledgeToSyntheticChunks, knowledgeToSyntheticSegments } from './synthetic-chunks';
 import {
   VIDEO_KNOWLEDGE_PROVIDER,
@@ -43,6 +54,9 @@ export type ProcessMultimodalResult = {
 /**
  * Multimodal POC orchestrator: video → VideoKnowledgeProvider → domain knowledge
  * + synthetic transcription/chunks for existing embeddings/index.
+ *
+ * Transient provider errors are rethrown for BullMQ backoff; permanent errors
+ * become UnrecoverableError so the queue does not keep retrying.
  */
 @Service()
 export class MultimodalKnowledgeService {
@@ -55,6 +69,7 @@ export class MultimodalKnowledgeService {
   async processSource(
     sourceId: string,
     logger: FastifyBaseLogger,
+    context?: JobExecutionContext,
   ): Promise<ProcessMultimodalResult> {
     const sourceRepo = this.database.getRepository(Source);
     const transcriptionRepo = this.database.getRepository(Transcription);
@@ -62,26 +77,30 @@ export class MultimodalKnowledgeService {
     const knowledgeRepo = this.database.getRepository(KnowledgeExtraction);
     const jobRepo = this.database.getRepository(ProcessingJob);
 
+    const attempt = context?.attempt ?? 1;
+    const maxAttempts = context?.maxAttempts ?? multimodalTotalAttempts();
+    const { model, isFallback } = resolveMultimodalModel(attempt);
+
     const source = await sourceRepo.findOne({ where: { id: sourceId } });
     if (!source) {
       const error = new Error(`Source not found: ${sourceId}`);
       (error as Error & { statusCode?: number }).statusCode = 404;
-      throw error;
+      throw new UnrecoverableError(error.message);
     }
 
     const videoPath = join(env.storageDir, source.storageKey);
     try {
       await access(videoPath);
     } catch {
-      const error = new Error(`Video file not found for source: ${sourceId}`);
-      (error as Error & { statusCode?: number }).statusCode = 404;
-      throw error;
+      throw new UnrecoverableError(
+        `Video file not found for source: ${sourceId}`,
+      );
     }
 
     source.status = SourceStatus.PROCESSING;
     await sourceRepo.save(source);
 
-    const attempt =
+    const dbAttempt =
       (await knowledgeRepo.count({ where: { sourceId } })) + 1;
 
     const transcription = transcriptionRepo.create({
@@ -94,7 +113,7 @@ export class MultimodalKnowledgeService {
       rawPath: null,
       structuredPath: null,
       errorMessage: null,
-      attempt,
+      attempt: dbAttempt,
       startedAt: new Date(),
       finishedAt: null,
     });
@@ -109,7 +128,7 @@ export class MultimodalKnowledgeService {
       summary: null,
       payloadJson: null,
       errorMessage: null,
-      attempt,
+      attempt: dbAttempt,
       startedAt: new Date(),
       finishedAt: null,
     });
@@ -133,7 +152,10 @@ export class MultimodalKnowledgeService {
           sourceId,
           provider: this.provider.name,
           pipeline: 'multimodal',
+          model,
+          isFallback,
           attempt,
+          maxAttempts,
         },
         async () =>
           this.provider.analyze({
@@ -141,6 +163,7 @@ export class MultimodalKnowledgeService {
             videoPath,
             originalName: source.originalName,
             mimeType: guessVideoMime(source.originalName),
+            model,
           }),
       );
 
@@ -191,6 +214,10 @@ export class MultimodalKnowledgeService {
         {
           sourceId,
           provider: this.provider.name,
+          model,
+          isFallback,
+          attempt,
+          maxAttempts,
           chunkCount: drafts.length,
           suggestedTitle: extracted.suggestedTitle,
         },
@@ -206,30 +233,52 @@ export class MultimodalKnowledgeService {
         summary: knowledge.summary,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const classified = classifyVideoProviderError(error);
+      const willRetry =
+        classified.retryable &&
+        willRetryMultimodalAttempt(attempt, maxAttempts);
+      const publicMessage = publicMessageForAttempt(classified, willRetry);
 
       transcription.status = TranscriptionStatus.FAILED;
-      transcription.errorMessage = message;
+      transcription.errorMessage = publicMessage;
       transcription.finishedAt = new Date();
       await transcriptionRepo.save(transcription);
 
       knowledge.status = KnowledgeExtractionStatus.FAILED;
-      knowledge.errorMessage = message;
+      knowledge.errorMessage = publicMessage;
       knowledge.finishedAt = new Date();
       await knowledgeRepo.save(knowledge);
 
       extractJob.status = ProcessingJobStatus.FAILED;
-      extractJob.errorMessage = message;
+      extractJob.errorMessage = publicMessage;
       extractJob.finishedAt = new Date();
       await jobRepo.save(extractJob);
 
-      source.status = SourceStatus.FAILED;
+      // Keep source PROCESSING while BullMQ still has retries left.
+      source.status = willRetry ? SourceStatus.PROCESSING : SourceStatus.FAILED;
       await sourceRepo.save(source);
 
       logger.error(
-        { sourceId, provider: this.provider.name, err: message.slice(0, 400) },
+        {
+          sourceId,
+          provider: this.provider.name,
+          model,
+          isFallback,
+          attempt,
+          maxAttempts,
+          category: classified.category,
+          retryable: classified.retryable,
+          willRetry,
+          status: classified.status,
+          err: publicMessage,
+        },
         'Multimodal knowledge extraction failed',
       );
+
+      if (!classified.retryable) {
+        throw new UnrecoverableError(publicMessage);
+      }
+      // Retryable: let BullMQ delay/retry. Preserve status on the error when present.
       throw error;
     }
   }

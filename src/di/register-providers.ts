@@ -99,6 +99,9 @@ export function registerDomainProviders(logger?: FastifyBaseLogger): void {
     {
       videoProcessor: env.videoProcessor,
       geminiVideoModel: env.gemini.videoModel,
+      geminiVideoFallbackModel: env.gemini.videoFallbackModel ?? null,
+      geminiVideoMaxAttempts: env.gemini.videoMaxAttempts,
+      geminiVideoRetryDelayMs: env.gemini.videoRetryDelayMs,
     },
     'Video processor pipeline selected',
   );

@@ -7,7 +7,6 @@ import { Service } from 'typedi';
 import { env } from '../config/env';
 import type { StructuredLessonKnowledge } from '../knowledge/knowledge.schema';
 import { withNormalizedProviderErrors } from '../llm/normalize-provider-error';
-import { withControlledRetries } from '../llm/retry';
 import {
   hashFileSha256,
   isGeminiFileRefReusable,
@@ -23,11 +22,11 @@ import type { VideoAnalysisInput, VideoKnowledgeProvider } from './types';
 
 const POLL_MS = 2_500;
 const MAX_POLL_MS = 15 * 60_000;
-/** Video generateContent is long; wait longer between 503/429 retries. */
-const GENERATE_MAX_RETRIES = 4;
-const GENERATE_BASE_DELAY_MS = 8_000;
-const GENERATE_MAX_DELAY_MS = 90_000;
 
+/**
+ * Gemini Files API + generateContent adapter.
+ * Transient 429/503 must bubble to BullMQ — no in-provider sleep retries.
+ */
 @Service()
 export class GeminiVideoKnowledgeProvider implements VideoKnowledgeProvider {
   readonly name = 'gemini-video';
@@ -38,9 +37,12 @@ export class GeminiVideoKnowledgeProvider implements VideoKnowledgeProvider {
 
   async analyze(input: VideoAnalysisInput): Promise<StructuredLessonKnowledge> {
     if (!env.gemini.apiKey) {
-      throw new Error('GEMINI_API_KEY is not configured');
+      const error = new Error('GEMINI_API_KEY is not configured');
+      (error as Error & { statusCode?: number }).statusCode = 401;
+      throw error;
     }
 
+    const modelName = input.model ?? this.model;
     const fileManager = new GoogleAIFileManager(env.gemini.apiKey);
     const { fileUri, mimeType } = await this.resolveFileUri(
       fileManager,
@@ -49,7 +51,7 @@ export class GeminiVideoKnowledgeProvider implements VideoKnowledgeProvider {
 
     const client = new GoogleGenerativeAI(env.gemini.apiKey);
     const model = client.getGenerativeModel({
-      model: this.model,
+      model: modelName,
       generationConfig: {
         temperature: 0.2,
         maxOutputTokens: env.llm.maxOutputTokens,
@@ -58,36 +60,38 @@ export class GeminiVideoKnowledgeProvider implements VideoKnowledgeProvider {
       },
     });
 
-    const { value: text } = await withControlledRetries(
-      async () =>
-        withNormalizedProviderErrors(async () => {
-          const result = await model.generateContent([
-            {
-              fileData: {
-                fileUri,
-                mimeType,
-              },
-            },
-            { text: buildMultimodalVideoKnowledgePrompt() },
-          ]);
-          const content = result.response.text();
-          if (!content?.trim()) {
-            throw new Error('Gemini video analysis returned empty content');
-          }
-          return content;
-        }),
-      {
-        maxRetries: Math.max(env.llm.maxRetries, GENERATE_MAX_RETRIES),
-        baseDelayMs: GENERATE_BASE_DELAY_MS,
-        maxDelayMs: GENERATE_MAX_DELAY_MS,
-      },
-    );
+    const text = await withNormalizedProviderErrors(async () => {
+      const result = await model.generateContent([
+        {
+          fileData: {
+            fileUri,
+            mimeType,
+          },
+        },
+        { text: buildMultimodalVideoKnowledgePrompt() },
+      ]);
+      const content = result.response.text();
+      if (!content?.trim()) {
+        throw new Error('Gemini video analysis returned empty content');
+      }
+      return content;
+    });
 
-    return mapToStructuredLessonKnowledge(text);
+    try {
+      return mapToStructuredLessonKnowledge(text);
+    } catch (error) {
+      const wrapped = new Error(
+        error instanceof Error
+          ? `Knowledge payload failed schema validation: ${error.message}`
+          : 'Knowledge payload failed schema validation',
+      );
+      (wrapped as Error & { statusCode?: number }).statusCode = 400;
+      throw wrapped;
+    }
   }
 
   /**
-   * Upload once and reuse the Files API URI across reprocesses when the
+   * Upload once and reuse the Files API URI across BullMQ retries when the
    * local video hash is unchanged and the remote ref has not expired.
    */
   private async resolveFileUri(
@@ -140,14 +144,18 @@ export class GeminiVideoKnowledgeProvider implements VideoKnowledgeProvider {
         return file;
       }
       if (file.state === FileState.FAILED) {
-        throw new Error(
+        const error = new Error(
           `Gemini file processing failed: ${file.error?.message ?? fileName}`,
         );
+        (error as Error & { statusCode?: number }).statusCode = 400;
+        throw error;
       }
       if (Date.now() - started > MAX_POLL_MS) {
-        throw new Error(
+        const error = new Error(
           `Timed out waiting for Gemini file to become ACTIVE (${fileName})`,
         );
+        (error as Error & { statusCode?: number }).statusCode = 503;
+        throw error;
       }
       await sleep(POLL_MS);
     }
