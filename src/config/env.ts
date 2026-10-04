@@ -90,8 +90,16 @@ const rawEnvSchema = z.object({
   /** Which VideoKnowledgeProvider implementation to bind (composition root). */
   VIDEO_KNOWLEDGE_PROVIDER: z.enum(['gemini']).default('gemini'),
 
-  /** Pipeline after video is on disk: Whisper legacy vs Gemini multimodal POC. */
-  VIDEO_PROCESSOR: z.enum(['legacy', 'multimodal']).default('legacy'),
+  /**
+   * Pipeline after video is on disk:
+   * - legacy: Whisper → text knowledge → embed
+   * - hybrid: Whisper → text knowledge → selective visual enrich → embed (MVP)
+   * - multimodal: full-video Gemini (POC path)
+   */
+  VIDEO_PROCESSOR: z.enum(['legacy', 'hybrid', 'multimodal']).default('hybrid'),
+
+  /** Max ranked visual windows sent to multimodal in hybrid mode. */
+  VISUAL_ENRICH_TOP_N: z.coerce.number().int().min(0).max(10).default(3),
 
   OLLAMA_BASE_URL: z.string().min(1).default('http://ollama:11434'),
   OLLAMA_MODEL: z.string().min(1).default('qwen3:8b'),
@@ -165,7 +173,8 @@ export type AppEnv = {
     videoMediaResolution: 'default' | 'low' | 'medium' | 'high';
   };
   videoKnowledgeProvider: 'gemini';
-  videoProcessor: 'legacy' | 'multimodal';
+  videoProcessor: 'legacy' | 'hybrid' | 'multimodal';
+  visualEnrichTopN: number;
   ollama: {
     baseUrl: string;
     model: string;
@@ -352,6 +361,7 @@ export function loadEnv(
     gemini,
     videoKnowledgeProvider: raw.VIDEO_KNOWLEDGE_PROVIDER,
     videoProcessor: raw.VIDEO_PROCESSOR,
+    visualEnrichTopN: raw.VISUAL_ENRICH_TOP_N,
     ollama: {
       baseUrl: raw.OLLAMA_BASE_URL,
       model: raw.OLLAMA_MODEL,

@@ -118,6 +118,10 @@ export class JobQueueService {
     return this.enqueue(JobName.KnowledgeExtract, { sourceId }, { force: true });
   }
 
+  async enqueueVisualEnrich(sourceId: string) {
+    return this.enqueue(JobName.VisualEnrich, { sourceId }, { force: true });
+  }
+
   async enqueueMultimodalAnalyze(sourceId: string) {
     return this.enqueue(JobName.MultimodalAnalyze, { sourceId }, { force: true });
   }

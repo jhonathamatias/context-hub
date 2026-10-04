@@ -11,6 +11,7 @@ import { SourceIndexJobHandler } from './handlers/source-index.handler';
 import { SourceIngestJobHandler } from './handlers/source-ingest.handler';
 import { TranscriptionRunJobHandler } from './handlers/transcription-run.handler';
 import { VideoExtractJobHandler } from './handlers/video-extract.handler';
+import { VisualEnrichJobHandler } from './handlers/visual-enrich.handler';
 import { JobQueueService } from './queue.service';
 import type {
   JobExecutionContext,
@@ -32,6 +33,7 @@ export class JobDispatcher {
     videoExtract: VideoExtractJobHandler,
     transcriptionRun: TranscriptionRunJobHandler,
     knowledgeExtract: KnowledgeExtractJobHandler,
+    visualEnrich: VisualEnrichJobHandler,
     multimodalAnalyze: MultimodalKnowledgeJobHandler,
     embeddingsGenerate: EmbeddingsGenerateJobHandler,
     sourceIndex: SourceIndexJobHandler,
@@ -42,6 +44,7 @@ export class JobDispatcher {
       videoExtract,
       transcriptionRun,
       knowledgeExtract,
+      visualEnrich,
       multimodalAnalyze,
       embeddingsGenerate,
       sourceIndex,

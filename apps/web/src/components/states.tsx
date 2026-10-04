@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   Check,
+  Clapperboard,
   Download,
   FileAudio2,
   LoaderCircle,
@@ -61,11 +62,12 @@ const PIPELINE_STEPS: ReadonlyArray<{
   label: string;
   icon: LucideIcon;
 }> = [
-  { key: "INGEST", label: "Baixando vídeo", icon: Download },
+  { key: "INGEST", label: "Importando aula", icon: Download },
   { key: "EXTRACT_AUDIO", label: "Extraindo áudio", icon: FileAudio2 },
-  { key: "TRANSCRIBE", label: "Gerando transcrição", icon: Subtitles },
+  { key: "TRANSCRIBE", label: "Transcrevendo", icon: Subtitles },
   { key: "EXTRACT_KNOWLEDGE", label: "Extraindo conhecimento", icon: Sparkles },
-  { key: "EMBED", label: "Indexando busca", icon: Search },
+  { key: "VISUAL_ENRICH", label: "Analisando trechos visuais", icon: Clapperboard },
+  { key: "EMBED", label: "Indexando", icon: Search },
 ];
 
 const STAGE_ORDER = [
@@ -73,6 +75,7 @@ const STAGE_ORDER = [
   "EXTRACT_AUDIO",
   "TRANSCRIBE",
   "EXTRACT_KNOWLEDGE",
+  "VISUAL_ENRICH",
   "EMBED",
   "INDEX",
   "DONE",

@@ -369,7 +369,7 @@ function buildPipelineProgress(input: {
 
   if (!knowledgeDone) {
     return {
-      percent: 90,
+      percent: 88,
       stage: ProcessingStage.EXTRACT_KNOWLEDGE,
       label: 'Extraindo conhecimento',
       detail: 'Gerando resumo e tópicos',
@@ -378,11 +378,35 @@ function buildPipelineProgress(input: {
     };
   }
 
+  const visualRunning = running?.stage === ProcessingStage.VISUAL_ENRICH;
+  const visualDone = succeeded.has(ProcessingStage.VISUAL_ENRICH);
+  const visualFailed = latestJobs.some(
+    (j) =>
+      j.stage === ProcessingStage.VISUAL_ENRICH &&
+      j.status === ProcessingJobStatus.FAILED,
+  );
+  if (visualRunning || (!visualDone && !visualFailed && !succeeded.has(ProcessingStage.EMBED))) {
+    // Only show visual stage when a VISUAL_ENRICH job exists or is expected (hybrid).
+    const hasVisualJob = latestJobs.some(
+      (j) => j.stage === ProcessingStage.VISUAL_ENRICH,
+    );
+    if (hasVisualJob && !visualDone && !visualFailed) {
+      return {
+        percent: 92,
+        stage: ProcessingStage.VISUAL_ENRICH,
+        label: 'Analisando trechos visuais',
+        detail: 'Selecionando e analisando clips relevantes',
+        transcriptionPercent: 100,
+        ingestPercent: 100,
+      };
+    }
+  }
+
   return {
     percent: 96,
     stage: ProcessingStage.EMBED,
-    label: 'Gerando embeddings',
-    detail: 'Indexando para busca',
+    label: 'Indexando',
+    detail: 'Gerando embeddings para busca',
     transcriptionPercent: 100,
     ingestPercent: 100,
   };
@@ -615,12 +639,16 @@ export class SourceQueryService {
   async getKnowledge(sourceId: string): Promise<SourceKnowledgeResult> {
     await this.requireSource(sourceId);
 
-    const knowledge = await this.database
-      .getRepository(KnowledgeExtraction)
-      .findOne({
+    const knowledgeRepo = this.database.getRepository(KnowledgeExtraction);
+    const knowledge =
+      (await knowledgeRepo.findOne({
+        where: { sourceId, status: KnowledgeExtractionStatus.COMPLETED },
+        order: { createdAt: 'DESC' },
+      })) ??
+      (await knowledgeRepo.findOne({
         where: { sourceId },
         order: { createdAt: 'DESC' },
-      });
+      }));
 
     if (!knowledge) {
       const error = new Error('Knowledge extraction not found for source');

@@ -8,11 +8,13 @@ import { Button } from "@/components/ui/button";
 import { LessonStatus } from "@/components/lesson-status";
 import { LessonPlayer, type LessonPlayerHandle } from "@/components/lesson-player";
 import { TranscriptSegment } from "@/components/transcript-segment";
+import { TimestampLink } from "@/components/timestamp-link";
 import { EmptyState, LoadingSkeleton, ProcessingIndicator, SoftError } from "@/components/states";
 import { FeedbackAlert } from "@/components/ui/alert";
 import { PageFrame, PageFrameWidth } from "@/components/page-frame";
 import { formatDate, formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import type { TimedKnowledgeItem } from "@/lib/api";
 
 type SearchParams = { t?: number };
 
@@ -430,17 +432,53 @@ function LessonPage() {
                       </ul>
                     </div>
                   ) : null}
+
+                  {knowledge.data && knowledge.data.visualInsights.length > 0 ? (
+                    <TimedKnowledgeSection
+                      title="Informação visual"
+                      items={knowledge.data.visualInsights}
+                      onSeek={seek}
+                    />
+                  ) : null}
+
+                  {knowledge.data && knowledge.data.techniques.length > 0 ? (
+                    <TimedKnowledgeSection
+                      title="Técnicas"
+                      items={knowledge.data.techniques}
+                      onSeek={seek}
+                    />
+                  ) : null}
+
+                  {knowledge.data && knowledge.data.practicalIdeas.length > 0 ? (
+                    <TimedKnowledgeSection
+                      title="Ideias práticas"
+                      items={knowledge.data.practicalIdeas}
+                      onSeek={seek}
+                    />
+                  ) : null}
                 </div>
-              ) : (knowledge.data?.topics.length ?? 0) > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {knowledge.data?.topics.map((topic) => (
-                    <span
-                      key={topic}
-                      className="rounded-full border border-border bg-card px-3 py-1 text-sm"
-                    >
-                      {topic}
-                    </span>
-                  ))}
+              ) : (knowledge.data?.topics.length ?? 0) > 0 ||
+                (knowledge.data?.concepts.length ?? 0) > 0 ? (
+                <div className="space-y-6">
+                  {(knowledge.data?.topics.length ?? 0) > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {knowledge.data?.topics.map((topic) => (
+                        <span
+                          key={topic}
+                          className="rounded-full border border-border bg-card px-3 py-1 text-sm"
+                        >
+                          {topic}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {knowledge.data && knowledge.data.concepts.length > 0 ? (
+                    <TimedKnowledgeSection
+                      title="Conceitos"
+                      items={knowledge.data.concepts}
+                      onSeek={seek}
+                    />
+                  ) : null}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
@@ -480,6 +518,45 @@ function LessonPage() {
       </div>
     </PageFrame>
   );
+
+  function TimedKnowledgeSection({
+    title,
+    items,
+    onSeek,
+  }: {
+    title: string;
+    items: TimedKnowledgeItem[];
+    onSeek: (seconds: number) => void;
+  }) {
+    return (
+      <div>
+        <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+          {title}
+        </h2>
+        <ul className="mt-3 space-y-3">
+          {items.map((item, i) => (
+            <li key={`${item.label}-${i}`} className="text-[15px] leading-relaxed">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <span className="font-medium">{item.label}</span>
+                {item.startSeconds != null ? (
+                  <TimestampLink
+                    seconds={item.startSeconds}
+                    {...(item.endSeconds != null
+                      ? { endSeconds: item.endSeconds }
+                      : {})}
+                    onSelect={onSeek}
+                  />
+                ) : null}
+              </div>
+              {item.description ? (
+                <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
 
   function TranscriptList({
     onSelect,

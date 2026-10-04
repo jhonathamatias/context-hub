@@ -15,3 +15,4 @@ export { SourceIndexJobHandler } from './handlers/source-index.handler';
 export { SourceIngestJobHandler } from './handlers/source-ingest.handler';
 export { TranscriptionRunJobHandler } from './handlers/transcription-run.handler';
 export { VideoExtractJobHandler } from './handlers/video-extract.handler';
+export { VisualEnrichJobHandler } from './handlers/visual-enrich.handler';

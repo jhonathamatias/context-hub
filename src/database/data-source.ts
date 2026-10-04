@@ -15,6 +15,7 @@ import { AddKnowledgeTables1788918000000 } from './migrations/1788918000000-AddK
 import { AddChunkEmbeddings1788921000000 } from './migrations/1788921000000-AddChunkEmbeddings';
 import { EnablePgvector1788924000000 } from './migrations/1788924000000-EnablePgvector';
 import { AddIntegrations1788927000000 } from './migrations/1788927000000-AddIntegrations';
+import { AddVisualEnrichStage1788930000000 } from './migrations/1788930000000-AddVisualEnrichStage';
 import { SnakeNamingStrategy } from './snake-naming.strategy';
 
 export const dataSourceOptions: DataSourceOptions = {
@@ -37,6 +38,7 @@ export const dataSourceOptions: DataSourceOptions = {
     AddChunkEmbeddings1788921000000,
     EnablePgvector1788924000000,
     AddIntegrations1788927000000,
+    AddVisualEnrichStage1788930000000,
   ],
   namingStrategy: new SnakeNamingStrategy(),
   synchronize: false,

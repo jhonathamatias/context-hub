@@ -10,6 +10,7 @@ export { mapToStructuredLessonKnowledge } from './map-gemini-video-knowledge';
 export { knowledgeToSyntheticChunks } from './synthetic-chunks';
 export {
   buildPipelineNextJobMap,
+  isHybridPipeline,
   isMultimodalPipeline,
   type VideoProcessorMode,
 } from './pipeline';

@@ -52,12 +52,23 @@ export type Transcript = {
   segments: TranscriptSegment[];
 };
 
+export type TimedKnowledgeItem = {
+  label: string;
+  description?: string | null;
+  startSeconds?: number | null;
+  endSeconds?: number | null;
+};
+
 export type Knowledge = {
   title?: string | null;
   summary?: string | null;
   topics: string[];
   keyIdeas: string[];
   exercises: string[];
+  concepts: TimedKnowledgeItem[];
+  techniques: TimedKnowledgeItem[];
+  practicalIdeas: TimedKnowledgeItem[];
+  visualInsights: TimedKnowledgeItem[];
 };
 
 export type SearchHit = {
@@ -215,6 +226,7 @@ function toStringList(value: unknown): string[] {
                   'name',
                   'label',
                   'text',
+                  'description',
                 ]) ?? '',
               )
             : '',
@@ -223,6 +235,45 @@ function toStringList(value: unknown): string[] {
   }
   if (typeof value === 'string' && value.trim()) return [value.trim()];
   return [];
+}
+
+function toTimedList(
+  value: unknown,
+  typeKey: 'name' | 'type' = 'name',
+): TimedKnowledgeItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === 'string') {
+        return item.trim()
+          ? { label: item.trim(), description: null, startSeconds: null, endSeconds: null }
+          : null;
+      }
+      if (!item || typeof item !== 'object') return null;
+      const o = item as Record<string, unknown>;
+      const label = String(
+        pick<string>(o, [typeKey, 'name', 'title', 'label', 'text', 'description']) ??
+          '',
+      ).trim();
+      if (!label) return null;
+      const description =
+        pick<string>(o, ['description', 'text']) ??
+        (typeKey === 'type' ? null : undefined);
+      const startRaw = pick<number>(o, ['startSeconds', 'start']);
+      const endRaw = pick<number>(o, ['endSeconds', 'end']);
+      return {
+        label,
+        description:
+          description && description !== label ? String(description) : null,
+        startSeconds:
+          typeof startRaw === 'number' && Number.isFinite(startRaw)
+            ? startRaw
+            : null,
+        endSeconds:
+          typeof endRaw === 'number' && Number.isFinite(endRaw) ? endRaw : null,
+      };
+    })
+    .filter((x): x is TimedKnowledgeItem => Boolean(x));
 }
 
 function normalizeStatus(raw: unknown): LessonStatus {
@@ -460,6 +511,24 @@ export const api = {
       'knowledge',
       'data',
     ]) ?? {}) as Record<string, unknown>;
+    const concepts = toTimedList(
+      pick(nested, ['concepts']) ?? pick(raw ?? {}, ['concepts']),
+    );
+    const techniques = toTimedList(
+      pick(nested, ['techniques']) ?? pick(raw ?? {}, ['techniques']),
+    );
+    const practicalIdeas = toTimedList(
+      pick(nested, ['licksOrPracticalIdeas', 'practicalIdeas']) ??
+        pick(raw ?? {}, ['licksOrPracticalIdeas']),
+    );
+    const visualInsights = toTimedList(
+      pick(nested, ['visualInsights']) ?? pick(raw ?? {}, ['visualInsights']),
+      'type',
+    );
+    const exercises = toTimedList(
+      pick(nested, ['exercises', 'practice', 'drills']) ??
+        pick(raw ?? {}, ['exercises']),
+    );
     return {
       title:
         pick<string>(raw ?? {}, ['suggestedTitle', 'title']) ??
@@ -470,21 +539,28 @@ export const api = {
         pick<string>(nested, ['summary', 'overview', 'abstract']) ??
         null,
       topics: toStringList(
-        pick(nested, ['topics', 'tags', 'concepts', 'subjects']) ??
-          pick(raw ?? {}, ['topics']),
+        pick(nested, ['topics', 'tags', 'subjects']) ?? pick(raw ?? {}, ['topics']),
       ),
-      keyIdeas: toStringList(
-        pick(nested, [
-          'keyIdeas',
-          'key_ideas',
-          'insights',
-          'takeaways',
-          'points',
-        ]),
-      ),
-      exercises: toStringList(
-        pick(nested, ['exercises', 'practice', 'drills']),
-      ),
+      keyIdeas:
+        concepts.length > 0
+          ? concepts.map((c) => c.label)
+          : toStringList(
+              pick(nested, [
+                'keyIdeas',
+                'key_ideas',
+                'insights',
+                'takeaways',
+                'points',
+              ]),
+            ),
+      exercises:
+        exercises.length > 0
+          ? exercises.map((e) => e.label)
+          : toStringList(pick(nested, ['exercises', 'practice', 'drills'])),
+      concepts,
+      techniques,
+      practicalIdeas,
+      visualInsights,
     };
   },
 

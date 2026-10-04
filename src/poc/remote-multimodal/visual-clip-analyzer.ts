@@ -16,20 +16,19 @@ import type {
 const POLL_MS = 2_000;
 const MAX_POLL_MS = 5 * 60_000;
 
-const visualClipSchema: Schema = {
+const visualClipSchema = {
   type: Type.OBJECT,
   properties: {
-    summary: { type: Type.STRING, maxLength: 400 },
+    summary: { type: Type.STRING },
     losesImportantInfoWithoutVideo: { type: Type.BOOLEAN },
-    losesImportantInfoReason: { type: Type.STRING, maxLength: 300 },
+    losesImportantInfoReason: { type: Type.STRING },
     visualFindings: {
       type: Type.ARRAY,
-      maxItems: 6,
       items: {
         type: Type.OBJECT,
         properties: {
-          type: { type: Type.STRING, maxLength: 64 },
-          description: { type: Type.STRING, maxLength: 180 },
+          type: { type: Type.STRING },
+          description: { type: Type.STRING },
           startSeconds: { type: Type.NUMBER, nullable: true },
           endSeconds: { type: Type.NUMBER, nullable: true },
           confidence: { type: Type.NUMBER, nullable: true },
@@ -44,7 +43,7 @@ const visualClipSchema: Schema = {
     'losesImportantInfoWithoutVideo',
     'losesImportantInfoReason',
   ],
-};
+} as Schema;
 
 /**
  * Experimental POC analyzer for short visual clips.
@@ -126,7 +125,15 @@ export async function analyzeVisualClip(input: {
     losesImportantInfoReason: parsed.losesImportantInfoReason ?? null,
   };
 
-  const meta = result.usageMetadata;
+  const meta = (
+    result as {
+      usageMetadata?: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+        totalTokenCount?: number;
+      };
+    }
+  ).usageMetadata;
 
   return {
     knowledge,

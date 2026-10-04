@@ -1,9 +1,13 @@
 import { JobName } from '../jobs/types';
 
-export type VideoProcessorMode = 'legacy' | 'multimodal';
+export type VideoProcessorMode = 'legacy' | 'hybrid' | 'multimodal';
 
 export function isMultimodalPipeline(mode: VideoProcessorMode): boolean {
   return mode === 'multimodal';
+}
+
+export function isHybridPipeline(mode: VideoProcessorMode): boolean {
+  return mode === 'hybrid';
 }
 
 /** Pure next-job map for tests and JobDispatcher. */
@@ -17,6 +21,17 @@ export function buildPipelineNextJobMap(
       [JobName.EmbeddingsGenerate]: JobName.SourceIndex,
       [JobName.VideoExtract]: JobName.MultimodalAnalyze,
       [JobName.KnowledgeExtract]: JobName.EmbeddingsGenerate,
+    };
+  }
+
+  if (mode === 'hybrid') {
+    return {
+      [JobName.SourceIngest]: JobName.VideoExtract,
+      [JobName.VideoExtract]: JobName.TranscriptionRun,
+      [JobName.TranscriptionRun]: JobName.KnowledgeExtract,
+      [JobName.KnowledgeExtract]: JobName.VisualEnrich,
+      [JobName.VisualEnrich]: JobName.EmbeddingsGenerate,
+      [JobName.EmbeddingsGenerate]: JobName.SourceIndex,
     };
   }
 

@@ -26,6 +26,7 @@ import {
 } from '../database';
 import { withProcessingLog } from '../observability';
 import { ProcessingStateService } from '../processing';
+import { writeIngestOrigin } from '../visual-enrichment/ingest-origin';
 import { FfmpegVideoProcessor } from './ffmpeg-video-processor';
 import {
   VideoValidationError,
@@ -206,6 +207,13 @@ export class SourceIngestService {
         ProcessingStage.EXTRACT_AUDIO,
         ProcessingJobStatus.PENDING,
       );
+      // Persist origin (no token) so hybrid visual enrich can remote-seek later.
+      await writeIngestOrigin(source.id, {
+        kind: 'onedrive',
+        shareUrl: pending.shareUrl,
+        itemId: pending.itemId,
+        originalName: pending.originalName,
+      });
       await rm(pendingPath, { force: true });
       await rm(progressPath, { force: true });
       await this.cleanupEphemeral(item);

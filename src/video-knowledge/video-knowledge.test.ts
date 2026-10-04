@@ -43,6 +43,15 @@ describe('buildPipelineNextJobMap', () => {
     assert.equal(map[JobName.MultimodalAnalyze], JobName.EmbeddingsGenerate);
     assert.notEqual(map[JobName.MultimodalAnalyze], JobName.SourceIndex);
   });
+
+  it('routes hybrid through visual.enrich before embeddings', () => {
+    const map = buildPipelineNextJobMap('hybrid');
+    assert.equal(map[JobName.TranscriptionRun], JobName.KnowledgeExtract);
+    assert.equal(map[JobName.KnowledgeExtract], JobName.VisualEnrich);
+    assert.equal(map[JobName.VisualEnrich], JobName.EmbeddingsGenerate);
+    assert.equal(map[JobName.EmbeddingsGenerate], JobName.SourceIndex);
+    assert.equal(map[JobName.MultimodalAnalyze], undefined);
+  });
 });
 
 describe('mapToStructuredLessonKnowledge', () => {

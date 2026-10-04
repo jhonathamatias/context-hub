@@ -68,13 +68,24 @@ export class EmbeddingService {
       throw error;
     }
 
-    const transcription = await transcriptionRepo.findOne({
-      where: {
-        sourceId,
-        status: TranscriptionStatus.COMPLETED,
-      },
-      order: { createdAt: 'DESC' },
-    });
+    // Prefer Whisper (hybrid/legacy chunks). Avoid synthetic multimodal rows
+    // stealing the embed pass when both exist for the same source.
+    const transcription =
+      (await transcriptionRepo.findOne({
+        where: {
+          sourceId,
+          status: TranscriptionStatus.COMPLETED,
+          provider: 'local-whisper',
+        },
+        order: { createdAt: 'DESC' },
+      })) ??
+      (await transcriptionRepo.findOne({
+        where: {
+          sourceId,
+          status: TranscriptionStatus.COMPLETED,
+        },
+        order: { createdAt: 'DESC' },
+      }));
 
     if (!transcription) {
       const error = new Error(

@@ -25,6 +25,15 @@ const reviewQuestionSchema = z.object({
   endSeconds: z.number().nonnegative().nullable().optional(),
 });
 
+const visualInsightSchema = z.object({
+  type: z.string().min(1),
+  description: z.string().min(1),
+  startSeconds: z.number().nonnegative().nullable().optional(),
+  endSeconds: z.number().nonnegative().nullable().optional(),
+  confidence: z.number().min(0).max(1).nullable().optional(),
+  provenance: z.literal('visual').default('visual'),
+});
+
 export const structuredLessonKnowledgeSchema = z.object({
   suggestedTitle: z.string().min(1),
   summary: z.string().min(1),
@@ -43,6 +52,8 @@ export const structuredLessonKnowledgeSchema = z.object({
   licksOrPracticalIdeas: z.array(timedDescriptionSchema).default([]),
   teacherRecommendations: z.array(timedTextSchema).default([]),
   reviewQuestions: z.array(reviewQuestionSchema).default([]),
+  /** Selective multimodal findings (clip enrichment). Optional for text-only lessons. */
+  visualInsights: z.array(visualInsightSchema).default([]),
 });
 
 export type StructuredLessonKnowledge = z.infer<
@@ -178,6 +189,22 @@ export const structuredLessonKnowledgeJsonSchema = {
           question: { type: 'string' },
           startSeconds: { type: ['number', 'null'] },
           endSeconds: { type: ['number', 'null'] },
+        },
+      },
+    },
+    visualInsights: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['type', 'description'],
+        properties: {
+          type: { type: 'string' },
+          description: { type: 'string' },
+          startSeconds: { type: ['number', 'null'] },
+          endSeconds: { type: ['number', 'null'] },
+          confidence: { type: ['number', 'null'] },
+          provenance: { type: 'string', enum: ['visual'] },
         },
       },
     },
